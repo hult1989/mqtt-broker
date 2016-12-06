@@ -1,0 +1,13 @@
+{
+  "brokers": [
+    {
+      "tcp_port": 1883,
+      "socket_idle_timeout": 600000
+    },
+    {
+      "tcp_port": 11883,
+      "websocket_enabled": true,
+      "websocket_subprotocols": "mqtt,mqttv3.1"
+    }
+ ]
+}

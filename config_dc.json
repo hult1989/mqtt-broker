@@ -1,0 +1,11 @@
+{
+  "brokers": [
+    {
+      "tcp_port": 1883,
+      "socket_idle_timeout": 120
+    }
+  ],
+  "bridge_server": {
+    "local_bridge_port": 7007
+  }
+}
