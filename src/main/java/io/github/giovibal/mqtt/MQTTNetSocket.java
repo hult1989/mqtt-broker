@@ -25,18 +25,18 @@ public class MQTTNetSocket extends MQTTSocket {
         //reviewed by hult @2016-10-24
         socketConsumer = vertx.eventBus().consumer(remoteAddr, cmd -> {
             if (this.session != null && this.session.getClientID().equals(cmd.body())) {
-                logger.warn("close socket " + this.remoteAddr);
                 closeConnection();
             }
         });
     }
 
     public void start() {
-//        netSocket.setWriteQueueMaxSize(1000);
+        netSocket.setWriteQueueMaxSize(1000);
         netSocket.handler(this);
         netSocket.exceptionHandler(event -> {
             String clientInfo = getClientInfo();
-            logger.error(clientInfo + ", net-socket closed ... " + netSocket.writeHandlerID() + " error: " + event.getMessage(), event.getCause());
+            logger.error(clientInfo + ", net-socket exception caught: " + netSocket.writeHandlerID() + " error: " + event.getMessage(), event.getCause());
+            event.getCause().printStackTrace();
             handleWillMessage();
             shutdown();
         });
@@ -67,7 +67,6 @@ public class MQTTNetSocket extends MQTTSocket {
     }
 
     protected void closeConnection() {
-        logger.debug("net-socket will be closed ... " + netSocket.writeHandlerID());
         netSocket.close();
     }
 

@@ -1,0 +1,14 @@
+{
+  "mongodb": {
+    "host": "laptop",
+    "port": 27017,
+    "username": "didi",
+    "password": "f",
+    "authSource": "msg",
+    "db_name": "msg"
+  },
+  "redis": {
+    "host": "laptop",
+    "auth": "didi"
+  }
+}

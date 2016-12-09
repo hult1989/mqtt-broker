@@ -2,9 +2,15 @@ package io.github.giovibal.mqtt.pushservice;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.logging.Logger;
+import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.mongo.MongoClient;
 import io.vertx.redis.RedisClient;
 import io.vertx.redis.RedisOptions;
+import org.apache.commons.io.FileUtils;
+
+import java.io.File;
+import java.io.IOException;
 
 /**
  * Created by kindt on 2016/7/23 0023.
@@ -17,12 +23,19 @@ import io.vertx.redis.RedisOptions;
 public class DBClient {
     private static RedisClient redisClient = null;
     private static MongoClient mongoClient = null;
+    private static Logger logger = LoggerFactory.getLogger(DBClient.class);
 
     public static synchronized void init(Vertx vertx) {
-        JsonObject config = new JsonObject().put("host", "localhost").put("port", 27017)
-                .put("username", "didi").put("password", "f").put("authSource", "msg").put("db_name", "msg");
-        mongoClient = MongoClient.createNonShared(vertx, config);
-        redisClient = RedisClient.create(vertx, new RedisOptions().setHost("localhost").setAuth("didi"));
+        try {
+            JsonObject config = new JsonObject(FileUtils.readFileToString(new File("./db_config.json"), "UTF-8"));
+            mongoClient = MongoClient.createNonShared(vertx, config.getJsonObject("mongodb"));
+            redisClient = RedisClient.create(vertx, config.getJsonObject("redis"));
+        } catch (IOException e) {
+            logger.error("FAILED TO INIT DB FOR " + e.getMessage());
+            System.exit(0);
+        }
+        //JsonObject config = new JsonObject().put("host", "localhost").put("port", 27017)
+                //.put("username", "didi").put("password", "f").put("authSource", "msg").put("db_name", "msg");
     }
 
     //TODO: 改成单例，类似 return this.getInstance().redisClient;

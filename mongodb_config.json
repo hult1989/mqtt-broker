@@ -1,7 +1,0 @@
-{
-  "host": "laptop",
-  "port": 27017,
-  "username": "didi",
-  "password": "f",
-  "authSource": "locations.db"
-}

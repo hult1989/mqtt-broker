@@ -6,7 +6,6 @@ import io.github.giovibal.mqtt.persistence.StoreManager;
 import io.github.giovibal.mqtt.persistence.Subscription;
 import io.github.giovibal.mqtt.pushservice.DBClient;
 import io.github.giovibal.mqtt.pushservice.PushMessage;
-import io.github.giovibal.mqtt.security.AuthorizationClient;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -44,8 +43,6 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     private String protoName;
     private boolean cleanSession;
     private String tenant;
-    private boolean securityEnabled;
-    private String authenticatorAddress;
     private boolean retainSupport;
     private MessageConsumer<Buffer> messageConsumer;
     private Handler<PublishMessage> publishMessageHandler;
@@ -65,7 +62,6 @@ public class MQTTSession implements Handler<Message<Buffer>> {
         this.vertx = vertx;
         this.decoder = new MQTTDecoder();
         this.encoder = new MQTTEncoder();
-        this.securityEnabled = config.isSecurityEnabled();
         this.retainSupport = config.isRetainSupport();
         this.subscriptions = new LinkedHashMap<>();
         this.qosUtils = new QOSUtils();
@@ -73,7 +69,6 @@ public class MQTTSession implements Handler<Message<Buffer>> {
 
         this.topicsManager = new MQTTTopicsManagerOptimized();
         this.storeManager = new StoreManager(this.vertx);
-        this.authenticatorAddress = config.getAuthenticatorAddress();
 
     }
 
@@ -117,39 +112,24 @@ public class MQTTSession implements Handler<Message<Buffer>> {
         }
 
         //用户登陆后在这里订阅自己的消息
-        this.registerPushService(clientID);
+        //this.registerPushService(clientID);
 
 
 
         String username = connectMessage.getUsername();
         String password = connectMessage.getPassword();
 
-        if(securityEnabled) {
-            AuthorizationClient auth = new AuthorizationClient(vertx.eventBus(), authenticatorAddress);
-            auth.authorize(username, password, validationInfo -> {
-                if (validationInfo.auth_valid) {
-                    String tenant = validationInfo.tenant;
-                    _initTenant(tenant);
-                    _handleConnectMessage(connectMessage);
-                    authHandler.handle(Boolean.TRUE);
-                } else {
-                    authHandler.handle(Boolean.FALSE);
-                }
-            });
+        String clientID = connectMessage.getClientID();
+        String tenant = null;
+        if(username == null || username.trim().length()==0) {
+            tenant = extractTenant(clientID);
         }
         else {
-            String clientID = connectMessage.getClientID();
-            String tenant = null;
-            if(username == null || username.trim().length()==0) {
-                tenant = extractTenant(clientID);
-            }
-            else {
-                tenant = extractTenant(username);
-            }
-            _initTenant(tenant);
-            _handleConnectMessage(connectMessage);
-            authHandler.handle(Boolean.TRUE);
+            tenant = extractTenant(username);
         }
+        _initTenant(tenant);
+        _handleConnectMessage(connectMessage);
+        authHandler.handle(Boolean.TRUE);
     }
 
     //TODO: 这样似乎是不够的，因为没法确定客户端会如何处理自己未订阅的消息
@@ -253,6 +233,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
 
     //reviewed by hult @2016-10-24
     public void handlePublishMessage(PublishMessage publishMessage) {
+        /*
         System.out.println(publishMessage.getTopicName());
         //如果是司机发布的自定义的地理位置消息，没有必要进行交给mqtt的业务逻辑处理，自己交个locationHandler写入MongoDB即可
         if (publishMessage.getTopicName().equals("locations")) {
@@ -263,6 +244,8 @@ public class MQTTSession implements Handler<Message<Buffer>> {
             }
             return;
         }
+        */
+
         try {
             // publish always have tenant, if session is not tenantized, tenant is retrieved from topic ([tenant]/to/pi/c)
             String publishTenant = calculatePublishTenant(publishMessage);
@@ -409,7 +392,6 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     @Override
     public void handle(Message<Buffer> message) {
         try {
-            logger.warn(String.format("%s try to handle message %s", this.clientID, message.toString()));
             boolean tenantMatch = tenantMatch(message);
             if(tenantMatch) {
                 Buffer in = message.body();

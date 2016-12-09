@@ -90,7 +90,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
     }
 
     private void onMessageFromClient(AbstractMessage msg) throws Exception {
-        logger.info("<<< " + msg);
+        logger.info("Broker <<< " + getClientInfo() + " :" + msg);
         switch (msg.getMessageType()) {
             case CONNECT:
                 /*
@@ -107,13 +107,18 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                     /*
                      The Server MUST process a second CONNECT Packet sent from a Client as a protocol violation and disconnect the Client
                       */
-//                    connAck.setSessionPresent(true);// TODO implement cleanSession=false
+                    connAck.setSessionPresent(true);// TODO implement cleanSession=false
                     //closeConnection();
+                    connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
+                    sendMessageToClient(connAck);
                 } else {
+                    /**
+
                     DBClient.getRedisClient().hgetall("user:" + connect.getClientID(), hgetall -> {
                         if (hgetall.failed()) {
                             logger.warn("failed to process CONNECT, failed to hget from redis because of " + hgetall.cause().getMessage());
                             shutdown();
+                            System.exit(0);
                         } else {
                             String existingServerAddr = hgetall.result().getString("serveraddr");
                             String existingClientAddr = hgetall.result().getString("clientaddr");
@@ -134,39 +139,39 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                                 logger.info(String.format("ADDRESS UPDATE [%s -> %s] ==> [%s -> %s]", existingClientAddr, existingServerAddr, remoteAddr, localAddr));
                             }
                             //更新redis中用户在线状态记录，TODO 使用方法，封装两个操作
-                            DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
-                            DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
-                            session = new MQTTSession(vertx, config);
-                            session.setPublishMessageHandler(this::sendMessageToClient);
-                            session.setKeepaliveErrorHandler(clientID -> {
-                                String cinfo = clientID;
-                                if (session != null) {
-                                    cinfo = session.getClientInfo();
-                                }
-                                logger.info("keep alive exhausted! closing connection for client[" + cinfo + "] ...");
-                                closeConnection();
-                            });
-                            //TODO 这个sessionPresent是干嘛的？
-                            connAck.setSessionPresent(false);
-                            try {
-                                session.handleConnectMessage(connect, authenticated -> {
-                                    if (authenticated) {
-                                        connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
-                                        sendMessageToClient(connAck);
-                                        session.handleArchiveMsg();
-                                    } else {
-                                        logger.error("Authentication failed! clientID= " + connect.getClientID() + " username=" + connect.getUsername());
-                                        connAck.setReturnCode(ConnAckMessage.BAD_USERNAME_OR_PASSWORD);
-                                        sendMessageToClient(connAck);
-                                    }
-                                });
-                            } catch (Exception e) {
-                                logger.warn("session failed to process CONNECT because " + e.getMessage());
-                                shutdown();
-                            }
+                    */
+                    DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
+                    DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
+                    session = new MQTTSession(vertx, config);
+                    session.setPublishMessageHandler(this::sendMessageToClient);
+                    session.setKeepaliveErrorHandler(clientID -> {
+                        String cinfo = clientID;
+                        if (session != null) {
+                            cinfo = session.getClientInfo();
                         }
+                        logger.info("keep alive exhausted! closing connection for client[" + cinfo + "] ...");
+                        closeConnection();
                     });
-                }
+                    //TODO 这个sessionPresent是干嘛的？
+                    connAck.setSessionPresent(false);
+                    try {
+                        session.handleConnectMessage(connect, authenticated -> {
+                            if (authenticated) {
+                                connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
+                                sendMessageToClient(connAck);
+                                session.handleArchiveMsg();
+                            } else {
+                                logger.error("Authentication failed! clientID= " + connect.getClientID() + " username=" + connect.getUsername());
+                                connAck.setReturnCode(ConnAckMessage.BAD_USERNAME_OR_PASSWORD);
+                                sendMessageToClient(connAck);
+                            }
+                        });
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        logger.warn("session failed to process CONNECT because " + e.getMessage());
+                        shutdown();
+                    }
+            }
             break;
             case SUBSCRIBE:
                 session.resetKeepAliveTimer();
