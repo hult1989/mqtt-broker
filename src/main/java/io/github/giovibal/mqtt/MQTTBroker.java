@@ -85,8 +85,6 @@ public class MQTTBroker extends AbstractVerticle {
         int port = c.getPort();
         int idleTimeout = c.getSocketIdleTimeout();
 
-        System.out.println("broker running in " + Thread.currentThread().getName());
-
         NetServerOptions opt = new NetServerOptions()
                 .setTcpKeepAlive(true)
                 .setAcceptBacklog(16384)

@@ -84,8 +84,8 @@ public class Main {
         DBClient.init(vertx);
 
         vertx.deployVerticle(MQTTBroker.class.getName(), deploymentOptions);
-        vertx.deployVerticle("io.github.giovibal.mqtt.pushservice.PushServer");
-            //vertx.deployVerticle("io.github.giovibal.mqtt.pushservice.PushVerticle");
+        //vertx.deployVerticle("io.github.giovibal.mqtt.pushservice.PushServer");
+        //vertx.deployVerticle("io.github.giovibal.mqtt.pushservice.PushVerticle");
 
     }
     public static void stop(String[] args) {

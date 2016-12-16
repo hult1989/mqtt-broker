@@ -93,6 +93,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
         logger.info("Broker <<< " + getClientInfo() + " :" + msg);
         switch (msg.getMessageType()) {
             case CONNECT:
+
                 /*
                 需要处理的情况包括，一个client在同一条链路上发来了多个connect消息，这时需要忽略掉后面的connect
                 一个client在一条新的链路上发来了connect消息，这是需要关闭掉前一个链接，清除前一个session，然后重新简历session
@@ -139,7 +140,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                                 logger.info(String.format("ADDRESS UPDATE [%s -> %s] ==> [%s -> %s]", existingClientAddr, existingServerAddr, remoteAddr, localAddr));
                             }
                             //更新redis中用户在线状态记录，TODO 使用方法，封装两个操作
-                    */
+                     */
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
                     session = new MQTTSession(vertx, config);
@@ -159,7 +160,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                             if (authenticated) {
                                 connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
                                 sendMessageToClient(connAck);
-                                session.handleArchiveMsg();
+                                //session.handleArchiveMsg();
                             } else {
                                 logger.error("Authentication failed! clientID= " + connect.getClientID() + " username=" + connect.getUsername());
                                 connAck.setReturnCode(ConnAckMessage.BAD_USERNAME_OR_PASSWORD);

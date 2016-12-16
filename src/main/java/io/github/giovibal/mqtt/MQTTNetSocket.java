@@ -13,7 +13,6 @@ import io.vertx.core.net.NetSocket;
 public class MQTTNetSocket extends MQTTSocket {
 
     private static Logger logger = LoggerFactory.getLogger(MQTTNetSocket.class);
-    private MessageConsumer<String> socketConsumer;
 
     private NetSocket netSocket;
 
@@ -22,12 +21,6 @@ public class MQTTNetSocket extends MQTTSocket {
         this.netSocket = netSocket;
         this.remoteAddr = netSocket.remoteAddress().toString();
         this.localAddr = netSocket.localAddress().toString();
-        //reviewed by hult @2016-10-24
-        socketConsumer = vertx.eventBus().consumer(remoteAddr, cmd -> {
-            if (this.session != null && this.session.getClientID().equals(cmd.body())) {
-                closeConnection();
-            }
-        });
     }
 
     public void start() {
@@ -36,7 +29,7 @@ public class MQTTNetSocket extends MQTTSocket {
         netSocket.exceptionHandler(event -> {
             String clientInfo = getClientInfo();
             logger.error(clientInfo + ", net-socket exception caught: " + netSocket.writeHandlerID() + " error: " + event.getMessage(), event.getCause());
-            event.getCause().printStackTrace();
+            //event.getCause().printStackTrace();
             handleWillMessage();
             shutdown();
         });
@@ -45,9 +38,6 @@ public class MQTTNetSocket extends MQTTSocket {
             logger.info(clientInfo + ", net-socket closed ... " + netSocket.writeHandlerID());
             handleWillMessage();
             shutdown();
-
-            //altered by hult
-            socketConsumer.unregister();
 
         });
     }
