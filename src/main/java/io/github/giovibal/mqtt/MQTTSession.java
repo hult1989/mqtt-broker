@@ -9,7 +9,6 @@ import io.github.giovibal.mqtt.pushservice.PushMessage;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
@@ -31,8 +30,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
 
     private static Logger logger = LoggerFactory.getLogger(MQTTSession.class);
 
-    public static final String ADDRESS = "io.github.giovibal.mqtt";
-    public static final String TENANT_HEADER = "tenant";
+    public static final String ADDRESS = "MQTT_BROKER_EVENTBUS";
 //    public static final String AUTHORIZATION_ADDRESS = "io.github.giovibal.mqtt.OAuth2AuthenticatorVerticle";
 
     private Vertx vertx;
@@ -42,7 +40,6 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     private String clientID;
     private String protoName;
     private boolean cleanSession;
-    private String tenant;
     private boolean retainSupport;
     private MessageConsumer<Buffer> messageConsumer;
     private Handler<PublishMessage> publishMessageHandler;
@@ -70,17 +67,6 @@ public class MQTTSession implements Handler<Message<Buffer>> {
         this.topicsManager = new MQTTTopicsManagerOptimized();
         this.storeManager = new StoreManager(this.vertx);
 
-    }
-
-    private String extractTenant(String username) {
-        if(username == null || username.trim().length()==0)
-            return "";
-        String tenant = "";
-        int idx = username.lastIndexOf('@');
-        if(idx > 0) {
-            tenant = username.substring(idx+1);
-        }
-        return tenant;
     }
 
     public void setPublishMessageHandler(Handler<PublishMessage> publishMessageHandler) {
@@ -111,23 +97,11 @@ public class MQTTSession implements Handler<Message<Buffer>> {
             logger.info("Detected MQTT protocol " + protoName + ", clientID: " + clientID);
         }
 
-        //用户登陆后在这里订阅自己的消息
-        //this.registerPushService(clientID);
-
-
 
         String username = connectMessage.getUsername();
         String password = connectMessage.getPassword();
-
         String clientID = connectMessage.getClientID();
-        String tenant = null;
-        if(username == null || username.trim().length()==0) {
-            tenant = extractTenant(clientID);
-        }
-        else {
-            tenant = extractTenant(username);
-        }
-        _initTenant(tenant);
+
         _handleConnectMessage(connectMessage);
         authHandler.handle(Boolean.TRUE);
     }
@@ -155,12 +129,6 @@ public class MQTTSession implements Handler<Message<Buffer>> {
         });
     }
 
-
-    private void _initTenant(String tenant) {
-        if(tenant == null)
-            throw new IllegalStateException("Tenant cannot be null");
-        this.tenant = tenant;
-    }
     private void _handleConnectMessage(ConnectMessage connectMessage) {
         if (!cleanSession) {
             logger.info("cleanSession=false: restore old session state with subscriptions ...");
@@ -202,7 +170,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
             long keepAliveMillis = keepAliveSeconds * 1500;
             keepAliveTimerID = vertx.setPeriodic(keepAliveMillis, tid -> {
                 if(keepAliveTimeEnded) {
-                    logger.info("keep-alive timer end " + getClientInfo());
+                    logger.debug("keep-alive timer end " + getClientInfo());
                     handleWillMessage();
                     if (keepaliveErrorHandler != null) {
                         keepaliveErrorHandler.handle(clientID);
@@ -216,7 +184,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     }
     private void stopKeepAliveTimer() {
         try {
-            logger.info("keep-alive cancel old timer: " + keepAliveTimerID + " " + getClientInfo());
+            logger.debug("keep-alive cancel old timer: " + keepAliveTimerID + " " + getClientInfo());
             boolean removed = vertx.cancelTimer(keepAliveTimerID);
             if (!removed) {
                 logger.warn("keep-alive cancel old timer not removed ID: " + keepAliveTimerID + " " + getClientInfo());
@@ -231,26 +199,8 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     }
 
 
-    //reviewed by hult @2016-10-24
     public void handlePublishMessage(PublishMessage publishMessage) {
-        /*
-        System.out.println(publishMessage.getTopicName());
-        //如果是司机发布的自定义的地理位置消息，没有必要进行交给mqtt的业务逻辑处理，自己交个locationHandler写入MongoDB即可
-        if (publishMessage.getTopicName().equals("locations")) {
-            try {
-                vertx.eventBus().send("locations", this.encoder.enc(publishMessage));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            return;
-        }
-        */
-
         try {
-            // publish always have tenant, if session is not tenantized, tenant is retrieved from topic ([tenant]/to/pi/c)
-            String publishTenant = calculatePublishTenant(publishMessage);
-            System.out.println(publishTenant);
-
             // store retained messages ...
             if(publishMessage.isRetainFlag()) {
                 boolean payloadIsEmpty=false;
@@ -262,9 +212,9 @@ public class MQTTSession implements Handler<Message<Buffer>> {
                     }
                 }
                 if(payloadIsEmpty) {
-                    storeManager.deleteRetainMessage(publishTenant, publishMessage.getTopicName());
+                    storeManager.deleteRetainMessage(publishMessage.getTopicName());
                 } else {
-                    storeManager.saveRetainMessage(publishTenant, publishMessage);
+                    storeManager.saveRetainMessage(publishMessage);
                 }
             }
 
@@ -273,10 +223,8 @@ public class MQTTSession implements Handler<Message<Buffer>> {
              * regardless of how the flag was set in the message it received. */
             publishMessage.setRetainFlag(false);
             Buffer msg = encoder.enc(publishMessage);
-            if(tenant == null)
-                tenant = "";
-            DeliveryOptions opt = new DeliveryOptions().addHeader(TENANT_HEADER, publishTenant);
-            vertx.eventBus().send(ADDRESS, msg, opt);
+
+            vertx.eventBus().send(ADDRESS, msg);
 
 //            NOT TESTED... It's only a code sample trying to resolve "No pong from server" error messages in production ...
 //            MessageProducer<Buffer> producer = vertx.eventBus().publisher(ADDRESS);
@@ -289,33 +237,6 @@ public class MQTTSession implements Handler<Message<Buffer>> {
 
         } catch(Throwable e) {
             logger.error(e.getMessage());
-        }
-    }
-
-    private String calculatePublishTenant(PublishMessage publishMessage) {
-        return calculatePublishTenant(publishMessage.getTopicName());
-    }
-    private String calculatePublishTenant(String topic) {
-        boolean isTenantSession = isTenantSession();
-        if(isTenantSession) {
-            return tenant;
-        } else {
-            String t;
-            boolean slashFirst = topic.startsWith("/");
-            if (slashFirst) {
-                int idx = topic.indexOf('/', 1);
-                if(idx>1)
-                    t = topic.substring(1, idx);
-                else
-                    t = topic.substring(1);
-            } else {
-                int idx = topic.indexOf('/', 0);
-                if(idx>0)
-                    t = topic.substring(0, idx);
-                else
-                    t = topic;
-            }
-            return t;
         }
     }
 
@@ -338,11 +259,9 @@ public class MQTTSession implements Handler<Message<Buffer>> {
                 sub.setTopicFilter(topicFilter);
                 this.subscriptions.put(topicFilter, sub);
 
-                String publishTenant = calculatePublishTenant(topicFilter);
-
                 // check in client wants receive retained message by this topicFilter
                 if(retainSupport) {
-                    storeManager.getRetainedMessagesByTopicFilter(publishTenant, topicFilter, (List<PublishMessage> retainedMessages) -> {
+                    storeManager.getRetainedMessagesByTopicFilter(topicFilter, (List<PublishMessage> retainedMessages) -> {
                         if (retainedMessages != null) {
                             int incrMessageID = messageID;
                             for (PublishMessage retainedMessage : retainedMessages) {
@@ -363,48 +282,18 @@ public class MQTTSession implements Handler<Message<Buffer>> {
         }
     }
 
-    private boolean isTenantSession() {
-        boolean isTenantSession = tenant!=null && tenant.trim().length()>0;
-        return isTenantSession;
-    }
-    private boolean tenantMatch(Message<Buffer> message) {
-        boolean isTenantSession = isTenantSession();
-        boolean tenantMatch;
-        if(isTenantSession) {
-            boolean containsTenantHeader = message.headers().contains(TENANT_HEADER);
-            if (containsTenantHeader) {
-                String tenantHeaderValue = message.headers().get(TENANT_HEADER);
-                tenantMatch =
-                        tenant.equals(tenantHeaderValue)
-                                || "".equals(tenantHeaderValue)
-                ;
-            } else {
-                // if message doesn't contains header is not for a tenant-session
-                tenantMatch = false;
-            }
-        } else {
-            // if this is not a tenant-session, receive all messages from all tenants
-            tenantMatch = true;
-        }
-        return tenantMatch;
-    }
 
     @Override
     public void handle(Message<Buffer> message) {
         try {
-            boolean tenantMatch = tenantMatch(message);
-            if(tenantMatch) {
-                Buffer in = message.body();
-                PublishMessage pm = (PublishMessage) decoder.dec(in);
-                // filter messages by of subscriptions of this client
-                if(pm == null) {
-                    logger.warn("PublishMessage is null, message.headers => "+ message.headers().entries()+"");
-                }
-                else {
-                    handlePublishMessageReceived(pm);
-                }
-            } else {
-                logger.warn("message will be dropt because no tenant match");
+            Buffer in = message.body();
+            PublishMessage pm = (PublishMessage) decoder.dec(in);
+            // filter messages by of subscriptions of this client
+            if(pm == null) {
+                logger.warn("PublishMessage is null, message.headers => "+ message.headers().entries()+"");
+            }
+            else {
+                handlePublishMessageReceived(pm);
             }
         } catch (Throwable e) {
             logger.error(e.getMessage(), e);

@@ -1,4 +1,5 @@
 import sys
+import os
 import re
 import paho.mqtt.client as mqtt
 from threading import Thread
@@ -6,7 +7,7 @@ from random import randint
 
 def on_connect(client, userdata, rc):
     print "connected with result code ", rc
-    client.subscribe(client.userId, 1)
+    #client.subscribe(client.userId, 1)
 
 def on_disconnect(client, userdata, rc):
     print "receive DISCONNECT from server"
@@ -30,7 +31,9 @@ def read2q(client):
     while True:
         inputs = raw_input('Input Message Action: ')
         for line in inputs.splitlines():
-            if line[0] not in {'p', 's'}:
+            if line.find('exit') != -1:
+                os._exit(1)
+            elif line[0] not in {'p', 's'}:
                 print 'Invalid Input'
             else:
                 try:
@@ -46,7 +49,7 @@ def on_message(client, userdata, msg):
 
 def init_client(host):
     #userId = str(randint(10000, 100000))
-    userId = 'alex'
+    userId = 'alex@netlab'
     client = mqtt.Client(client_id=userId, clean_session=True)
     client.userId = userId
     client.on_connect = on_connect

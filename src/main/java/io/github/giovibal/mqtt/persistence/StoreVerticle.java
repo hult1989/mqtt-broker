@@ -4,7 +4,6 @@ import io.github.giovibal.mqtt.ITopicsManager;
 import io.github.giovibal.mqtt.MQTTTopicsManagerOptimized;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.MultiMap;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -21,8 +20,8 @@ public class StoreVerticle extends AbstractVerticle {
 
     public static final String ADDRESS = StoreVerticle.class.getName()+"_IN";
 
-//    private Map<String, byte[]> db;
-    private Map<String, Map<String, byte[]>> db;
+    private Map<String, byte[]> db;
+    //private Map<String, Map<String, byte[]>> db;
     private ITopicsManager topicsManager;
 
     @Override
@@ -59,20 +58,9 @@ public class StoreVerticle extends AbstractVerticle {
 
     }
 
-    private Map<String, byte[]> db(String tenant) {
-        if(!db.containsKey(tenant)) {
-            db.put(tenant, new LinkedHashMap<>());
-        }
-        return db.get(tenant);
-    }
-
-
-
     private JsonObject saveRetainMessage(JsonObject request) {
         String topic = request.getString("topic");
-        String tenant = request.getString("tenant");
         byte[] message = request.getBinary("message");
-        Map<String, byte[]> db = db(tenant);
         db.put(topic, message);
 
         JsonObject response = new JsonObject();
@@ -82,9 +70,7 @@ public class StoreVerticle extends AbstractVerticle {
 
     private JsonObject getRetainedMessagesByTopicFilter(JsonObject request) {
         String topicFilter = request.getString("topicFilter");
-        String tenant = request.getString("tenant");
         List<JsonObject> list = new ArrayList<>();
-        Map<String, byte[]> db = db(tenant);
 
         for(String topic : db.keySet()) {
             boolean topicMatch = topicsManager.match(topic, topicFilter);
@@ -102,8 +88,6 @@ public class StoreVerticle extends AbstractVerticle {
 
     private JsonObject deleteRetainMessage(JsonObject request) {
         String topic = request.getString("topic");
-        String tenant = request.getString("tenant");
-        Map<String, byte[]> db = db(tenant);
         db.remove(topic);
 
         JsonObject response = new JsonObject();
