@@ -104,11 +104,11 @@ public class MQTTSession implements Handler<Message<Buffer>> {
         cleanSession = connectMessage.isCleanSession();
         protoName = connectMessage.getProtocolName();
         if("MQIsdp".equals(protoName)) {
-            logger.debug("Detected MQTT v. 3.1 " + protoName + ", clientID: " + clientID);
+            logger.info("Detected MQTT v. 3.1 " + protoName + ", clientID: " + clientID);
         } else if("MQTT".equals(protoName)) {
-            logger.debug("Detected MQTT v. 3.1.1 " + protoName + ", clientID: " + clientID);
+            logger.info("Detected MQTT v. 3.1.1 " + protoName + ", clientID: " + clientID);
         } else {
-            logger.debug("Detected MQTT protocol " + protoName + ", clientID: " + clientID);
+            logger.info("Detected MQTT protocol " + protoName + ", clientID: " + clientID);
         }
 
         //用户登陆后在这里订阅自己的消息
@@ -163,7 +163,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     }
     private void _handleConnectMessage(ConnectMessage connectMessage) {
         if (!cleanSession) {
-            logger.debug("cleanSession=false: restore old session state with subscriptions ...");
+            logger.info("cleanSession=false: restore old session state with subscriptions ...");
         }
         boolean isWillFlag = connectMessage.isWillFlag();
         if(isWillFlag) {
@@ -202,7 +202,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
             long keepAliveMillis = keepAliveSeconds * 1500;
             keepAliveTimerID = vertx.setPeriodic(keepAliveMillis, tid -> {
                 if(keepAliveTimeEnded) {
-                    logger.debug("keep-alive timer end " + getClientInfo());
+                    logger.info("keep-alive timer end " + getClientInfo());
                     handleWillMessage();
                     if (keepaliveErrorHandler != null) {
                         keepaliveErrorHandler.handle(clientID);
@@ -216,7 +216,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     }
     private void stopKeepAliveTimer() {
         try {
-            logger.debug("keep-alive cancel old timer: " + keepAliveTimerID + " " + getClientInfo());
+            logger.info("keep-alive cancel old timer: " + keepAliveTimerID + " " + getClientInfo());
             boolean removed = vertx.cancelTimer(keepAliveTimerID);
             if (!removed) {
                 logger.warn("keep-alive cancel old timer not removed ID: " + keepAliveTimerID + " " + getClientInfo());
@@ -485,7 +485,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     }
 
     public void handleDisconnect(DisconnectMessage disconnectMessage) {
-        logger.debug("Disconnect from " + clientID +" ...");
+        logger.info("Disconnect from " + clientID +" ...");
         /*
          * TODO: implement this behaviour
          * On receipt of DISCONNECT the Server:
@@ -511,7 +511,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     public void handleWillMessage() {
         // publish will message if present ...
         if(willMessage != null) {
-            logger.debug("publish will message ... topic[" + willMessage.getTopicName()+"]");
+            logger.info("publish will message ... topic[" + willMessage.getTopicName()+"]");
             handlePublishMessage(willMessage);
         }
     }

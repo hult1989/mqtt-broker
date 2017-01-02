@@ -2,7 +2,7 @@
   "brokers": [
     {
       "tcp_port": 1883,
-      "socket_idle_timeout": 0
+      "socket_idle_timeout": 10
     },
     {
       "tcp_port": 11883,

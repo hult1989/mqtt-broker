@@ -3,15 +3,12 @@ package io.github.giovibal.mqtt;
 import io.github.giovibal.mqtt.parser.MQTTDecoder;
 import io.github.giovibal.mqtt.parser.MQTTEncoder;
 import io.github.giovibal.mqtt.pushservice.DBClient;
-import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import io.vertx.core.net.NetSocket;
 import org.dna.mqtt.moquette.proto.messages.*;
-
-
-import java.util.Objects;
 
 import static org.dna.mqtt.moquette.proto.messages.AbstractMessage.*;
 
@@ -19,7 +16,7 @@ import static org.dna.mqtt.moquette.proto.messages.AbstractMessage.*;
  * Created by giovanni on 07/05/2014.
  * Base class for connection handling, 1 tcp connection corresponds to 1 instance of this class.
  */
-public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Handler<Buffer> {
+public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
 
     private static Logger logger = LoggerFactory.getLogger(MQTTSocket.class);
 
@@ -31,20 +28,55 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
     private ConfigParser config;
     protected String remoteAddr;
     protected String localAddr;
+    private NetSocket netSocket;
 
-    public MQTTSocket(Vertx vertx, ConfigParser config) {
+    public MQTTSocket(Vertx vertx, ConfigParser config, NetSocket netSocket) {
         this.decoder = new MQTTDecoder();
         this.encoder = new MQTTEncoder();
         this.tokenizer = new MQTTPacketTokenizer();
         this.tokenizer.registerListener(this);
         this.vertx = vertx;
         this.config = config;
+        this.netSocket = netSocket;
 
     }
+    public void start() {
+        netSocket.setWriteQueueMaxSize(1000);
+        netSocket.handler(buf-> {
+            tokenizer.process(buf.getBytes());
+        });
+        netSocket.exceptionHandler(event -> {
+            String clientInfo = getClientInfo();
+            logger.error(clientInfo + ", net-socket exception caught: " + netSocket.writeHandlerID() + " error: " + event.getMessage(), event.getCause());
+            //event.getCause().printStackTrace();
+            handleWillMessage();
+            shutdown();
+        });
+        netSocket.closeHandler(aVoid -> {
+            String clientInfo = getClientInfo();
+            logger.info(clientInfo + ", net-socket closed ... " + netSocket.writeHandlerID());
+            handleWillMessage();
+            shutdown();
 
-    abstract protected void sendMessageToClient(Buffer bytes);
-    abstract protected void closeConnection();
+        });
+    }
 
+
+
+    public void sendBytesOverSocket(Buffer bytes) {
+        try {
+            netSocket.write(bytes);
+            if (netSocket.writeQueueFull()) {
+                netSocket.pause();
+                netSocket.drainHandler( done -> netSocket.resume() );
+            }
+        } catch(Throwable e) {
+            logger.error(e.getMessage());
+        }
+    }
+    public void closeConnection() {
+        netSocket.close();
+    }
     public void shutdown() {
         logger.warn("shutdown call");
         if(tokenizer!=null) {
@@ -56,11 +88,6 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
             session = null;
         }
         vertx = null;
-    }
-
-    @Override
-    public void handle(Buffer buffer) {
-        tokenizer.process(buffer.getBytes());
     }
 
     @Override
@@ -111,7 +138,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                     connAck.setSessionPresent(true);// TODO implement cleanSession=false
                     //closeConnection();
                     connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
-                    sendMessageToClient(connAck);
+                    sendBytesOverSocket(connAck);
                 } else {
                     /**
 
@@ -144,7 +171,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
                     session = new MQTTSession(vertx, config);
-                    session.setPublishMessageHandler(this::sendMessageToClient);
+                    session.setPublishMessageHandler(this::sendBytesOverSocket);
                     session.setKeepaliveErrorHandler(clientID -> {
                         String cinfo = clientID;
                         if (session != null) {
@@ -159,12 +186,12 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                         session.handleConnectMessage(connect, authenticated -> {
                             if (authenticated) {
                                 connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
-                                sendMessageToClient(connAck);
+                                sendBytesOverSocket(connAck);
                                 //session.handleArchiveMsg();
                             } else {
                                 logger.error("Authentication failed! clientID= " + connect.getClientID() + " username=" + connect.getUsername());
                                 connAck.setReturnCode(ConnAckMessage.BAD_USERNAME_OR_PASSWORD);
-                                sendMessageToClient(connAck);
+                                sendBytesOverSocket(connAck);
                             }
                         });
                     } catch (Exception e) {
@@ -192,7 +219,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                     If there is no retained message, nothing is sent
                     */
                 }
-                sendMessageToClient(subAck);
+                sendBytesOverSocket(subAck);
                 break;
             case UNSUBSCRIBE:
                 session.resetKeepAliveTimer();
@@ -201,7 +228,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                 session.handleUnsubscribeMessage(unsubscribeMessage);
                 UnsubAckMessage unsubAck = new UnsubAckMessage();
                 unsubAck.setMessageID(unsubscribeMessage.getMessageID());
-                sendMessageToClient(unsubAck);
+                sendBytesOverSocket(unsubAck);
                 break;
             case PUBLISH:
                 session.resetKeepAliveTimer();
@@ -216,12 +243,12 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                     case LEAST_ONE:
                         PubAckMessage pubAck = new PubAckMessage();
                         pubAck.setMessageID(publish.getMessageID());
-                        sendMessageToClient(pubAck);
+                        sendBytesOverSocket(pubAck);
                         break;
                     case EXACTLY_ONCE:
                         PubRecMessage pubRec = new PubRecMessage();
                         pubRec.setMessageID(publish.getMessageID());
-                        sendMessageToClient(pubRec);
+                        sendBytesOverSocket(pubRec);
                         break;
                 }
                 break;
@@ -232,7 +259,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                 PubRelMessage prelResp = new PubRelMessage();
                 prelResp.setMessageID(pubRec.getMessageID());
                 prelResp.setQos(QOSType.LEAST_ONE);
-                sendMessageToClient(prelResp);
+                sendBytesOverSocket(prelResp);
                 break;
             case PUBCOMP:
                 session.resetKeepAliveTimer();
@@ -242,7 +269,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
                 PubRelMessage pubRel = (PubRelMessage)msg;
                 PubCompMessage pubComp = new PubCompMessage();
                 pubComp.setMessageID(pubRel.getMessageID());
-                sendMessageToClient(pubComp);
+                sendBytesOverSocket(pubComp);
                 break;
             case PUBACK:
                 session.resetKeepAliveTimer();
@@ -256,7 +283,7 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
             case PINGREQ:
                 session.resetKeepAliveTimer();
                 PingRespMessage pingResp = new PingRespMessage();
-                sendMessageToClient(pingResp);
+                sendBytesOverSocket(pingResp);
                 break;
             case DISCONNECT:
                 session.resetKeepAliveTimer();
@@ -273,11 +300,11 @@ public abstract class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerLis
     }
 
 
-    public void sendMessageToClient(AbstractMessage message) {
+    private void sendBytesOverSocket(AbstractMessage message) {
         try {
             logger.info(">>> " + message);
             Buffer b1 = encoder.enc(message);
-            sendMessageToClient(b1);
+            sendBytesOverSocket(b1);
         } catch(Throwable e) {
             logger.error(e.getMessage(), e);
         }

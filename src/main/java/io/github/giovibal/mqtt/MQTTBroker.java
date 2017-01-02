@@ -3,15 +3,12 @@ package io.github.giovibal.mqtt;
 import io.github.giovibal.mqtt.persistence.StoreVerticle;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.DeploymentOptions;
-import io.vertx.core.http.HttpServer;
-import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.net.NetServer;
 import io.vertx.core.net.NetServerOptions;
-import io.vertx.core.net.PemKeyCertOptions;
 
 /**
  * Created by giovanni on 11/04/2014.
@@ -95,9 +92,9 @@ public class MQTTBroker extends AbstractVerticle {
 
         NetServer netServer = vertx.createNetServer(opt);
         netServer.connectHandler(netSocket -> {
-            MQTTNetSocket mqttNetSocket = new MQTTNetSocket(vertx, c, netSocket);
+            MQTTSocket mqttSocket = new MQTTSocket(vertx, c, netSocket);
             logger.info("a client connected from " + netSocket.remoteAddress());
-            mqttNetSocket.start();
+            mqttSocket.start();
         }).listen();
     }
 }
