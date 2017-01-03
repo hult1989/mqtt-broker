@@ -7,7 +7,7 @@ from random import randint
 
 def on_connect(client, userdata, rc):
     print "connected with result code ", rc
-    #client.subscribe(client.userId, 1)
+    client.subscribe(client.userId, 1)
 
 def on_disconnect(client, userdata, rc):
     print "receive DISCONNECT from server"
@@ -49,7 +49,7 @@ def on_message(client, userdata, msg):
 
 def init_client(host):
     #userId = str(randint(10000, 100000))
-    userId = 'alex@netlab'
+    userId = 'alex'
     client = mqtt.Client(client_id=userId, clean_session=True)
     client.userId = userId
     client.on_connect = on_connect

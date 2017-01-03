@@ -224,7 +224,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
             publishMessage.setRetainFlag(false);
             Buffer msg = encoder.enc(publishMessage);
 
-            vertx.eventBus().send(ADDRESS, msg);
+            vertx.eventBus().send(publishMessage.getTopicName(), msg);
 
 //            NOT TESTED... It's only a code sample trying to resolve "No pong from server" error messages in production ...
 //            MessageProducer<Buffer> producer = vertx.eventBus().publisher(ADDRESS);
@@ -244,7 +244,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
         try {
             final int messageID = subscribeMessage.getMessageID();
             if(this.messageConsumer==null) {
-                messageConsumer = vertx.eventBus().consumer(ADDRESS);
+                messageConsumer = vertx.eventBus().consumer(this.clientID);
                 messageConsumer.handler(this);
             }
 
@@ -301,6 +301,8 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     }
 
     public void handlePublishMessageReceived(PublishMessage publishMessage) {
+        logger.info(this.clientID + " is waken for comparision ");
+
         boolean publishMessageToThisClient = false;
         int maxQos = -1;
 
