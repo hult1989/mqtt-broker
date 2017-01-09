@@ -107,4 +107,5 @@ public class ConfigParser {
     public int getSocketIdleTimeout() {
         return socketIdleTimeout;
     }
+
 }

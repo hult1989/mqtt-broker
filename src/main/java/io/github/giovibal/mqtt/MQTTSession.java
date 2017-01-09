@@ -48,6 +48,7 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     private StoreManager storeManager;
     private Map<String, List<Subscription>> matchingSubscriptionsCache;
     private PublishMessage willMessage;
+    private IMessageStore messageStore;
 
 //    private int keepAliveSeconds;
     private long keepAliveTimerID = -1;
@@ -66,6 +67,8 @@ public class MQTTSession implements Handler<Message<Buffer>> {
 
         this.topicsManager = new MQTTTopicsManagerOptimized();
         this.storeManager = new StoreManager(this.vertx);
+
+        this.messageStore = new IMessageStore.InMemoryMsgStore();
 
     }
 
@@ -132,6 +135,9 @@ public class MQTTSession implements Handler<Message<Buffer>> {
     private void _handleConnectMessage(ConnectMessage connectMessage) {
         if (!cleanSession) {
             logger.info("cleanSession=false: restore old session state with subscriptions ...");
+            messageStore.loadStore();
+        } else {
+            messageStore.dropAllMessages();
         }
         boolean isWillFlag = connectMessage.isWillFlag();
         if(isWillFlag) {

@@ -10,6 +10,8 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.net.NetServer;
 import io.vertx.core.net.NetServerOptions;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * Created by giovanni on 11/04/2014.
  * The Main Verticle
@@ -17,6 +19,8 @@ import io.vertx.core.net.NetServerOptions;
 public class MQTTBroker extends AbstractVerticle {
 
     private Logger logger = LoggerFactory.getLogger(MQTTBroker.class);
+    private ISessionStore sessionStore;
+    public static ConcurrentHashMap<String, MQTTSocket> onlineClients = new ConcurrentHashMap<>();
 
     private void deployVerticle(String c, DeploymentOptions opt) {
         vertx.deployVerticle(c, opt,
@@ -57,6 +61,7 @@ public class MQTTBroker extends AbstractVerticle {
 
             // 1 store x 1 broker
             deployStoreVerticle(1);
+            sessionStore = ISessionStore.getSessionStore("DB");
 
             JsonArray brokers = config.getJsonArray("brokers");
             for(int i = 0; i < brokers.size(); i++) {
@@ -73,7 +78,6 @@ public class MQTTBroker extends AbstractVerticle {
         } catch(Exception e ) {
             logger.error(e.getMessage(), e);
         }
-
     }
 
 
@@ -94,6 +98,8 @@ public class MQTTBroker extends AbstractVerticle {
         netServer.connectHandler(netSocket -> {
             MQTTSocket mqttSocket = new MQTTSocket(vertx, c, netSocket);
             logger.info("a client connected from " + netSocket.remoteAddress());
+            mqttSocket.setSessionStore(sessionStore);
+            //TODO: make sessionStore and onlineUsers thread-safe
             mqttSocket.start();
         }).listen();
     }

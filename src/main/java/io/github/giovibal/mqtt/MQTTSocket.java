@@ -2,7 +2,6 @@ package io.github.giovibal.mqtt;
 
 import io.github.giovibal.mqtt.parser.MQTTDecoder;
 import io.github.giovibal.mqtt.parser.MQTTEncoder;
-import io.github.giovibal.mqtt.pushservice.DBClient;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.logging.Logger;
@@ -27,7 +26,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     protected MQTTSession session;
     private ConfigParser config;
     protected String remoteAddr;
-    protected String localAddr;
+    private ISessionStore sessionStore;
     private NetSocket netSocket;
 
     public MQTTSocket(Vertx vertx, ConfigParser config, NetSocket netSocket) {
@@ -167,9 +166,15 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                                 logger.info(String.format("ADDRESS UPDATE [%s -> %s] ==> [%s -> %s]", existingClientAddr, existingServerAddr, remoteAddr, localAddr));
                             }
                             //更新redis中用户在线状态记录，TODO 使用方法，封装两个操作
-                     */
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
+                     */
+                    MQTTSocket existedSock = MQTTBroker.onlineClients.get(connect.getClientID());
+                    if (existedSock != null) {
+                        existedSock.closeConnection();
+                    }
+
+                    MQTTBroker.onlineClients.put(connect.getClientID(), this);
 
                     session = new MQTTSession(vertx, config);
                     session.setPublishMessageHandler(this::sendMessageToClient);
@@ -290,6 +295,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 session.resetKeepAliveTimer();
                 DisconnectMessage disconnectMessage = (DisconnectMessage)msg;
                 handleDisconnect(disconnectMessage);
+                closeConnection();
                 break;
             default:
                 logger.warn("type of message not known: "+ msg.getClass().getSimpleName());
@@ -334,4 +340,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
 //        logger.info("handle will message end.");
     }
 
+    public void setSessionStore(ISessionStore store) {
+        this.sessionStore = store;
+    }
 }
