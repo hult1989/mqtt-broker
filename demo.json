@@ -1,14 +1,28 @@
 {
-  "brokers": [
-    {
+  "broker": {
       "tcp_port": 1883,
-      "socket_idle_timeout": 10,
-      "message_store": "DB"
+      "socket_idle_timeout": 100,
+      "message_store": "DB",
+      "broker_id": "broker-001"
     },
-    {
-      "tcp_port": 11883,
-      "websocket_enabled": true,
-      "websocket_subprotocols": "mqtt,mqttv3.1"
-    }
- ]
+
+  "zookeepers": {
+    "zookeeperHosts": "127.0.0.1",
+	"sessionTimeout": 10000,
+	"connectTimeout": 3000,
+	"rootPath": "io.vertx",
+	"retry": {
+		"initialSleepTime": 100,
+		"intervalTimes": 10000,
+		"maxTimes": 5
+	}
+  },
+
+  "kafka": {
+    "zookeeper.connect": "localhost:2181",
+    "group.id": "VertxBroker",
+    "consumer.poll.interval.ms": 500,
+    "auto.offset.reset": "smallest",
+    "bootstrap.servers": "localhost:9092"
+  }
 }

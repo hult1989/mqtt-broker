@@ -1,5 +1,6 @@
 package io.github.giovibal.mqtt;
 
+import com.cyngn.kafka.consume.SimpleConsumer;
 import io.github.giovibal.mqtt.persistence.StoreVerticle;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.DeploymentOptions;
@@ -20,6 +21,8 @@ public class MQTTBroker extends AbstractVerticle {
 
     private Logger logger = LoggerFactory.getLogger(MQTTBroker.class);
     private ISessionStore sessionStore;
+    private String clusterID = null;
+    private String brokerID = null;
     public static ConcurrentHashMap<String, MQTTSocket> onlineClients = new ConcurrentHashMap<>();
 
     private void deployVerticle(String c, DeploymentOptions opt) {
@@ -53,28 +56,49 @@ public class MQTTBroker extends AbstractVerticle {
         );
     }
 
+    private void deployKafka(JsonObject config) {
+        JsonObject kafkaConfig = config.getJsonObject("kafka");
+        kafkaConfig.put("topics", new JsonArray().add(brokerID));
+
+        vertx.eventBus().consumer(SimpleConsumer.EVENTBUS_DEFAULT_ADDRESS, msg-> {
+            System.out.println("From Kafka: " + msg.body().toString());
+        });
+
+        vertx.deployVerticle(SimpleConsumer.class.getName(), new DeploymentOptions().setConfig(kafkaConfig), kret-> {
+            if (!kret.succeeded()) {
+                System.out.println(kret.cause().getMessage());
+                System.exit(0);
+            } else {
+                logger.info("kafka deployment finished, with topic: " + kafkaConfig.getJsonArray("topics"));
+            }
+        });
+    }
+
 
     @Override
     public void start() {
         try {
             JsonObject config = config();
+            clusterID = config.getString("cluster_id");
+            brokerID = config.getJsonObject("broker").getString("broker_id");
 
             // 1 store x 1 broker
             deployStoreVerticle(1);
             sessionStore = ISessionStore.getSessionStore("DB");
 
-            JsonArray brokers = config.getJsonArray("brokers");
-            for(int i = 0; i < brokers.size(); i++) {
-                JsonObject brokerConf = brokers.getJsonObject(i);
-                ConfigParser c = new ConfigParser(brokerConf);
+
+            JsonObject brokerConf = config.getJsonObject("broker");
+            ConfigParser c = new ConfigParser(brokerConf);
                 // MQTT over TCP
-                startTcpServer(c);
-                logger.info(
-                        "Startd Broker ==> [port: " + c.getPort() + "]" +
-                                " [" + c.getFeatursInfo() + "] " +
-                                " [socket_idle_timeout:" + c.getSocketIdleTimeout() + "] "
-                );
-            }
+            startTcpServer(c);
+            deployKafka(config);
+
+            logger.info("Startd Broker ==> [port: " + c.getPort() + "]" +
+                            " [" + c.getFeatursInfo() + "] " +
+                            " [socket_idle_timeout:" + c.getSocketIdleTimeout() + "] ");
+            logger.info("cluster broker deployed with id: " + clusterID);
+
+
         } catch(Exception e ) {
             logger.error(e.getMessage(), e);
         }

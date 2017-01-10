@@ -7,7 +7,7 @@ from random import randint
 
 def on_connect(client, userdata, rc):
     print "connected with result code ", rc
-    client.subscribe(client.userId, 1)
+    #client.subscribe(client.userId, 1)
 
 def on_disconnect(client, userdata, rc):
     print "receive DISCONNECT from server"
@@ -25,6 +25,8 @@ def upgrade(client):
             print '[{}] subscribe "{}"'.format(client.userId, topic)
     return process
 
+def on_log(client, userdata, level, buf):
+    print 'client: [{}], userdata: [{}], level: [{}], buf: [{}]'.format(client, userdata, level, buf)
 
 def read2q(client):
     processor = upgrade(client)
@@ -49,12 +51,13 @@ def on_message(client, userdata, msg):
 
 def init_client(host):
     #userId = str(randint(10000, 100000))
-    userId = 'alex'
+    userId = 'hult'
     client = mqtt.Client(client_id=userId, clean_session=True)
     client.userId = userId
     client.on_connect = on_connect
     client.on_message = on_message
     client.on_disconnect = on_disconnect
+    #client.on_log = on_log
 
     client.connect(host, 1883, 60)
     t = Thread(target=read2q, args=(client,))

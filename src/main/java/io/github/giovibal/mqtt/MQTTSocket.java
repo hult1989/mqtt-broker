@@ -279,7 +279,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 break;
             case PUBACK:
                 session.resetKeepAliveTimer();
-                session.handlePushAck((PubAckMessage)msg);
+                //session.handlePushAck((PubAckMessage)msg);
 
 
                 // A PUBACK message is the response to a PUBLISH message with QoS level 1.
