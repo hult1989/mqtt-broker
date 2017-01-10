@@ -2,6 +2,7 @@ package io.github.giovibal.mqtt;
 
 import io.github.giovibal.mqtt.parser.MQTTDecoder;
 import io.github.giovibal.mqtt.parser.MQTTEncoder;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.logging.Logger;
@@ -26,8 +27,10 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     protected MQTTSession session;
     private ConfigParser config;
     protected String remoteAddr;
-    private ISessionStore sessionStore;
     private NetSocket netSocket;
+    private long keepAliveTimerID = -1;
+    private boolean keepAliveTimeEnded;
+    private Handler<String> keepaliveErrorHandler;
 
     public MQTTSocket(Vertx vertx, ConfigParser config, NetSocket netSocket) {
         this.decoder = new MQTTDecoder();
@@ -47,15 +50,12 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
         netSocket.exceptionHandler(event -> {
             String clientInfo = getClientInfo();
             logger.error(clientInfo + ", net-socket exception caught: " + netSocket.writeHandlerID() + " error: " + event.getMessage(), event.getCause());
-            //event.getCause().printStackTrace();
-            handleWillMessage();
-            shutdown();
+            clean();
         });
         netSocket.closeHandler(aVoid -> {
             String clientInfo = getClientInfo();
             logger.info(clientInfo + ", net-socket closed ... " + netSocket.writeHandlerID());
-            handleWillMessage();
-            shutdown();
+            clean();
 
         });
     }
@@ -76,8 +76,9 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     public void closeConnection() {
         netSocket.close();
     }
-    public void shutdown() {
-        logger.warn("shutdown call");
+
+    private void clean() {
+        logger.warn("clean call references");
         if(tokenizer!=null) {
             tokenizer.removeAllListeners();
             tokenizer = null;
@@ -144,7 +145,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                     DBClient.getRedisClient().hgetall("user:" + connect.getClientID(), hgetall -> {
                         if (hgetall.failed()) {
                             logger.warn("failed to process CONNECT, failed to hget from redis because of " + hgetall.cause().getMessage());
-                            shutdown();
+                            clean();
                             System.exit(0);
                         } else {
                             String existingServerAddr = hgetall.result().getString("serveraddr");
@@ -169,16 +170,17 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
                      */
-                    MQTTSocket existedSock = MQTTBroker.onlineClients.get(connect.getClientID());
-                    if (existedSock != null) {
-                        existedSock.closeConnection();
+                    MQTTSession existingSession = MQTTBroker.onlineSessions.get(connect.getClientID());
+                    if (existingSession != null) {
+                        existingSession.shutdown();
                     }
 
-                    MQTTBroker.onlineClients.put(connect.getClientID(), this);
-
-                    session = new MQTTSession(vertx, config);
+                    session = new MQTTSession(this, config);
                     session.setPublishMessageHandler(this::sendMessageToClient);
-                    session.setKeepaliveErrorHandler(clientID -> {
+
+                    MQTTBroker.onlineSessions.put(connect.getClientID(), session);
+
+                    setKeepaliveErrorHandler(clientID -> {
                         String cinfo = clientID;
                         if (session != null) {
                             cinfo = session.getClientInfo();
@@ -193,6 +195,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                             if (authenticated) {
                                 connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
                                 sendMessageToClient(connAck);
+                                startKeepAliveTimer(connect.getKeepAlive());
                                 //session.handleArchiveMsg();
                             } else {
                                 logger.error("Authentication failed! clientID= " + connect.getClientID() + " username=" + connect.getUsername());
@@ -203,12 +206,12 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                     } catch (Exception e) {
                         e.printStackTrace();
                         logger.warn("session failed to process CONNECT because " + e.getMessage());
-                        shutdown();
+                        clean();
                     }
             }
             break;
             case SUBSCRIBE:
-                session.resetKeepAliveTimer();
+                resetKeepAliveTimer();
 
                 SubscribeMessage subscribeMessage = (SubscribeMessage)msg;
                 session.handleSubscribeMessage(subscribeMessage);
@@ -228,7 +231,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 sendMessageToClient(subAck);
                 break;
             case UNSUBSCRIBE:
-                session.resetKeepAliveTimer();
+                resetKeepAliveTimer();
 
                 UnsubscribeMessage unsubscribeMessage = (UnsubscribeMessage)msg;
                 session.handleUnsubscribeMessage(unsubscribeMessage);
@@ -237,10 +240,10 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 sendMessageToClient(unsubAck);
                 break;
             case PUBLISH:
-                session.resetKeepAliveTimer();
+                resetKeepAliveTimer();
 
                 PublishMessage publish = (PublishMessage)msg;
-                session.handlePublishMessage(publish);
+                //session.handlePublishMessage(publish);
                 switch (publish.getQos()) {
                     case RESERVED:
                         break;
@@ -259,7 +262,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 }
                 break;
             case PUBREC:
-                session.resetKeepAliveTimer();
+                resetKeepAliveTimer();
 
                 PubRecMessage pubRec = (PubRecMessage)msg;
                 PubRelMessage prelResp = new PubRelMessage();
@@ -268,17 +271,17 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 sendMessageToClient(prelResp);
                 break;
             case PUBCOMP:
-                session.resetKeepAliveTimer();
+                resetKeepAliveTimer();
                 break;
             case PUBREL:
-                session.resetKeepAliveTimer();
+                resetKeepAliveTimer();
                 PubRelMessage pubRel = (PubRelMessage)msg;
                 PubCompMessage pubComp = new PubCompMessage();
                 pubComp.setMessageID(pubRel.getMessageID());
                 sendMessageToClient(pubComp);
                 break;
             case PUBACK:
-                session.resetKeepAliveTimer();
+                resetKeepAliveTimer();
                 //session.handlePushAck((PubAckMessage)msg);
 
 
@@ -287,12 +290,12 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 // and by a subscriber in response to a PUBLISH message from the server.
                 break;
             case PINGREQ:
-                session.resetKeepAliveTimer();
+                resetKeepAliveTimer();
                 PingRespMessage pingResp = new PingRespMessage();
                 sendMessageToClient(pingResp);
                 break;
             case DISCONNECT:
-                session.resetKeepAliveTimer();
+                resetKeepAliveTimer();
                 DisconnectMessage disconnectMessage = (DisconnectMessage)msg;
                 handleDisconnect(disconnectMessage);
                 closeConnection();
@@ -331,16 +334,46 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
         return clientInfo;
     }
 
-    protected void handleWillMessage() {
-//        logger.info("handle will message... ");
-        if(session != null) {
-//            logger.info("handle will message: session found!");
-            session.handleWillMessage();
+
+    private void startKeepAliveTimer(int keepAliveSeconds) {
+        if (keepAliveSeconds > 0) {
+//            stopKeepAliveTimer();
+            keepAliveTimeEnded = true;
+        /*
+         * If the Keep Alive value is non-zero and the Server does not receive a Control Packet from the Client
+         * within one and a half times the Keep Alive time period, it MUST disconnect
+         */
+            long keepAliveMillis = keepAliveSeconds * 1500;
+            keepAliveTimerID = vertx.setPeriodic(keepAliveMillis, tid -> {
+                if (keepAliveTimeEnded) {
+                    logger.debug("keep-alive timer end " + getClientInfo());
+                    if (keepaliveErrorHandler != null && session != null) {
+                        keepaliveErrorHandler.handle(session.toString());
+                    }
+                    stopKeepAliveTimer();
+                }
+                // next time, will close connection
+                keepAliveTimeEnded = true;
+            });
         }
-//        logger.info("handle will message end.");
+    }
+    private void stopKeepAliveTimer() {
+        try {
+            logger.debug("keep-alive cancel old timer: " + keepAliveTimerID + " " + getClientInfo());
+            boolean removed = vertx.cancelTimer(keepAliveTimerID);
+            if (!removed) {
+                logger.warn("keep-alive cancel old timer not removed ID: " + keepAliveTimerID + " " + getClientInfo());
+            }
+        } catch(Throwable e) {
+            logger.error("Cannot stop keep-alive timer with ID: "+keepAliveTimerID +" "+ getClientInfo(), e);
+        }
+    }
+    private void setKeepaliveErrorHandler(Handler<String> handler) {
+        this.keepaliveErrorHandler = handler;
     }
 
-    public void setSessionStore(ISessionStore store) {
-        this.sessionStore = store;
+    public void resetKeepAliveTimer() {
+        keepAliveTimeEnded = false;
     }
+
 }

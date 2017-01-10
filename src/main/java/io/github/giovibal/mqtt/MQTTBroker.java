@@ -23,7 +23,7 @@ public class MQTTBroker extends AbstractVerticle {
     private ISessionStore sessionStore;
     private String clusterID = null;
     private String brokerID = null;
-    public static ConcurrentHashMap<String, MQTTSocket> onlineClients = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, MQTTSession> onlineSessions = new ConcurrentHashMap<>();
 
     private void deployVerticle(String c, DeploymentOptions opt) {
         vertx.deployVerticle(c, opt,
@@ -122,7 +122,6 @@ public class MQTTBroker extends AbstractVerticle {
         netServer.connectHandler(netSocket -> {
             MQTTSocket mqttSocket = new MQTTSocket(vertx, c, netSocket);
             logger.info("a client connected from " + netSocket.remoteAddress());
-            mqttSocket.setSessionStore(sessionStore);
             //TODO: make sessionStore and onlineUsers thread-safe
             mqttSocket.start();
         }).listen();

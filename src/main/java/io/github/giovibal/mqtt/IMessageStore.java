@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
  */
 public interface IMessageStore {
     static IMessageStore getStore(String type) {
+        //load store from DBClient without having to hold vertx instance
         IMessageStore messageStore = null;
         switch (type) {
             case "MongoDB":
