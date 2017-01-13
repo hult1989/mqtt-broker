@@ -1,5 +1,9 @@
-package io.github.giovibal.mqtt;
+package io.github.giovibal.mqtt.broker;
 
+import io.github.giovibal.mqtt.ConfigParser;
+import io.github.giovibal.mqtt.ITopicsManager;
+import io.github.giovibal.mqtt.MQTTTopicsManagerOptimized;
+import io.github.giovibal.mqtt.QOSUtils;
 import io.github.giovibal.mqtt.persistence.Subscription;
 import io.github.giovibal.mqtt.pushservice.DBClient;
 import io.vertx.core.Handler;
@@ -30,6 +34,7 @@ public class MQTTSession {
     private QOSUtils qosUtils;
     private Map<String, List<Subscription>> matchingSubscriptionsCache;
     private IMessageStore messageStore;
+    private ISessionStore sessionStore;
 
 
     public MQTTSession(MQTTSocket socket, ConfigParser config) {
@@ -40,6 +45,7 @@ public class MQTTSession {
 
         this.topicsManager = new MQTTTopicsManagerOptimized();
         this.messageStore = IMessageStore.getStore("DBStore");
+        this.sessionStore = MQTTBroker.getSessionStore();
     }
 
     public void setPublishMessageHandler(Handler<PublishMessage> publishMessageHandler) {
@@ -66,9 +72,9 @@ public class MQTTSession {
                                      Handler<Boolean> authHandler)
             throws Exception {
 
-        clientID = connectMessage.getClientID();
-        cleanSession = connectMessage.isCleanSession();
-        protoName = connectMessage.getProtocolName();
+        this.clientID = connectMessage.getClientID();
+        this.cleanSession = connectMessage.isCleanSession();
+        this.protoName = connectMessage.getProtocolName();
         if("MQIsdp".equals(protoName)) {
             logger.info("Detected MQTT v. 3.1 " + protoName + ", clientID: " + clientID);
         } else if("MQTT".equals(protoName)) {
@@ -77,13 +83,15 @@ public class MQTTSession {
             logger.info("Detected MQTT protocol " + protoName + ", clientID: " + clientID);
         }
 
-
-        String username = connectMessage.getUsername();
-        String password = connectMessage.getPassword();
-        String clientID = connectMessage.getClientID();
-
         _handleConnectMessage(connectMessage);
         authHandler.handle(Boolean.TRUE);
+        this.sessionStore.addClient(MQTTBroker.brokerID,  clientID, res-> {
+            if (!res.succeeded()) {
+                logger.error("failed to add session for " + res.cause().getMessage());
+            } else {
+                logger.info("add user session to redis");
+            }
+        });
     }
 
     //TODO: 这样似乎是不够的，因为没法确定客户端会如何处理自己未订阅的消息
@@ -234,6 +242,13 @@ public class MQTTSession {
 
     public void shutdown() {
         MQTTBroker.onlineSessions.remove(clientID);
+        this.sessionStore.removeClient(MQTTBroker.brokerID, clientID, res-> {
+            if (!res.succeeded()) {
+                logger.error("failed to remove user session " + clientID);
+            } else {
+                logger.info("remove user " + clientID + " session");
+            }
+        });
         logger.info(this.toString() + " will shut down, removed from online sessions");
         if (this.clientSocket != null) {
             this.clientSocket.closeConnection();

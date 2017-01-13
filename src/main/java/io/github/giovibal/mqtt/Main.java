@@ -1,5 +1,7 @@
 package io.github.giovibal.mqtt;
 
+import io.github.giovibal.mqtt.broker.Impl.RedisTest;
+import io.github.giovibal.mqtt.broker.MQTTBroker;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
@@ -93,6 +95,7 @@ public class Main {
                     if (res.succeeded()) {
                         Vertx vertx = res.result();
                         config.put("cluster_id", manager.getNodeID());
+                        vertx.deployVerticle(RedisTest.class.getName());
                         vertx.deployVerticle(MQTTBroker.class.getName(), new DeploymentOptions().setConfig(config));
                     } else {
                         logger.error("fail to cluster brokers: " + res.cause().getMessage());

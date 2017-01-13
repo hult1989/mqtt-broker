@@ -26,15 +26,17 @@ def upgrade(client):
     return process
 
 def on_log(client, userdata, level, buf):
-    print 'client: [{}], userdata: [{}], level: [{}], buf: [{}]'.format(client, userdata, level, buf)
+    print '-INFO: client: [{}], userdata: [{}], level: [{}], buf: [{}]'.format(client, userdata, level, buf)
 
 def read2q(client):
     processor = upgrade(client)
     while True:
-        inputs = raw_input('Input Message Action: ')
+        inputs = raw_input('Input Message Action: \n')
         for line in inputs.splitlines():
             if line.find('exit') != -1:
                 os._exit(1)
+            elif line.find('connect') != -1:
+                client.connect(host, 1883, 4)
             elif line[0] not in {'p', 's'}:
                 print 'Invalid Input'
             else:
@@ -57,9 +59,9 @@ def init_client(host):
     client.on_connect = on_connect
     client.on_message = on_message
     client.on_disconnect = on_disconnect
-    #client.on_log = on_log
+    client.on_log = on_log
 
-    client.connect(host, 1883, 60)
+    client.connect(host, 1883, 4)
     t = Thread(target=read2q, args=(client,))
     t.start()
     client.loop_forever()

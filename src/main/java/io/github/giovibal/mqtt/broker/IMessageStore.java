@@ -1,4 +1,4 @@
-package io.github.giovibal.mqtt;
+package io.github.giovibal.mqtt.broker;
 
 import org.dna.mqtt.moquette.proto.messages.MessageIDMessage;
 

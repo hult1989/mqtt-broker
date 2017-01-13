@@ -1,5 +1,8 @@
-package io.github.giovibal.mqtt;
+package io.github.giovibal.mqtt.broker;
 
+import io.github.giovibal.mqtt.ConfigParser;
+import io.github.giovibal.mqtt.MQTTPacketTokenizer;
+import io.github.giovibal.mqtt.QOSUtils;
 import io.github.giovibal.mqtt.parser.MQTTDecoder;
 import io.github.giovibal.mqtt.parser.MQTTEncoder;
 import io.vertx.core.Handler;
@@ -40,10 +43,9 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
         this.vertx = vertx;
         this.config = config;
         this.netSocket = netSocket;
-
     }
     public void start() {
-        netSocket.setWriteQueueMaxSize(1000);
+        netSocket.setWriteQueueMaxSize(500);
         netSocket.handler(buf-> {
             tokenizer.process(buf.getBytes());
         });
@@ -74,6 +76,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
         }
     }
     public void closeConnection() {
+        stopKeepAliveTimer();
         netSocket.close();
     }
 
@@ -185,7 +188,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                         if (session != null) {
                             cinfo = session.getClientInfo();
                         }
-                        logger.info("keep alive exhausted! closing connection for client[" + cinfo + "] ...");
+                        logger.warn("keep alive exhausted! closing connection for client[" + cinfo + "] ...");
                         closeConnection();
                     });
 
@@ -346,11 +349,12 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
             long keepAliveMillis = keepAliveSeconds * 1500;
             keepAliveTimerID = vertx.setPeriodic(keepAliveMillis, tid -> {
                 if (keepAliveTimeEnded) {
-                    logger.debug("keep-alive timer end " + getClientInfo());
+                    logger.info("keep-alive timer end " + getClientInfo());
+                    //should cancel timer first since close connection will set vertx to null
+                    stopKeepAliveTimer();
                     if (keepaliveErrorHandler != null && session != null) {
                         keepaliveErrorHandler.handle(session.toString());
                     }
-                    stopKeepAliveTimer();
                 }
                 // next time, will close connection
                 keepAliveTimeEnded = true;
@@ -359,7 +363,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     }
     private void stopKeepAliveTimer() {
         try {
-            logger.debug("keep-alive cancel old timer: " + keepAliveTimerID + " " + getClientInfo());
+            logger.info("keep-alive cancel old timer: " + keepAliveTimerID + " " + getClientInfo());
             boolean removed = vertx.cancelTimer(keepAliveTimerID);
             if (!removed) {
                 logger.warn("keep-alive cancel old timer not removed ID: " + keepAliveTimerID + " " + getClientInfo());

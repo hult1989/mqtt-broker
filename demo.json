@@ -1,13 +1,13 @@
 {
   "broker": {
       "tcp_port": 1883,
-      "socket_idle_timeout": 100,
+      "socket_idle_timeout": 60,
       "message_store": "DB",
       "broker_id": "broker-001"
     },
 
   "zookeepers": {
-    "zookeeperHosts": "127.0.0.1",
+    "zookeeperHosts": "laptop",
 	"sessionTimeout": 10000,
 	"connectTimeout": 3000,
 	"rootPath": "io.vertx",
@@ -19,10 +19,10 @@
   },
 
   "kafka": {
-    "zookeeper.connect": "localhost:2181",
+    "zookeeper.connect": "laptop:2181",
     "group.id": "VertxBroker",
     "consumer.poll.interval.ms": 500,
     "auto.offset.reset": "smallest",
-    "bootstrap.servers": "localhost:9092"
+    "bootstrap.servers": "laptop:9092"
   }
 }

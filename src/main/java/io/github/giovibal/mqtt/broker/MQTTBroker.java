@@ -1,9 +1,13 @@
-package io.github.giovibal.mqtt;
+package io.github.giovibal.mqtt.broker;
 
+import as.leap.vertx.rpc.impl.RPCClientOptions;
+import as.leap.vertx.rpc.impl.VertxRPCClient;
 import com.cyngn.kafka.consume.SimpleConsumer;
-import io.github.giovibal.mqtt.persistence.StoreVerticle;
+import io.github.giovibal.mqtt.ConfigParser;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.DeploymentOptions;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
@@ -20,10 +24,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MQTTBroker extends AbstractVerticle {
 
     private Logger logger = LoggerFactory.getLogger(MQTTBroker.class);
-    private ISessionStore sessionStore;
-    private String clusterID = null;
-    private String brokerID = null;
+    public static String clusterID = null;
+    public static String brokerID = null;
     public static ConcurrentHashMap<String, MQTTSession> onlineSessions = new ConcurrentHashMap<>();
+    private static ISessionStore sessionStore;
+
+    public static ISessionStore getSessionStore () {
+        return sessionStore;
+    }
 
     private void deployVerticle(String c, DeploymentOptions opt) {
         vertx.deployVerticle(c, opt,
@@ -50,17 +58,25 @@ public class MQTTBroker extends AbstractVerticle {
         );
     }
 
-    private void deployStoreVerticle(int instances) {
+    private void deployStoreVerticle() {
+        RPCClientOptions<ISessionStore> rpcClientOptions = new RPCClientOptions<ISessionStore>(vertx)
+                .setBusAddress("REDIS_SESSION_STORE").setServiceClass(ISessionStore.class);
+        sessionStore = new VertxRPCClient<ISessionStore>(rpcClientOptions).bindService();
+        /*
         deployVerticle(StoreVerticle.class,
                 new DeploymentOptions().setWorker(false).setInstances(instances)
         );
+        */
     }
 
     private void deployKafka(JsonObject config) {
         JsonObject kafkaConfig = config.getJsonObject("kafka");
         kafkaConfig.put("topics", new JsonArray().add(brokerID));
+        String kafkaAddress = String.join("/", SimpleConsumer.EVENTBUS_DEFAULT_ADDRESS, brokerID);
+        kafkaConfig.put("eventbus.address", kafkaAddress);
 
-        vertx.eventBus().consumer(SimpleConsumer.EVENTBUS_DEFAULT_ADDRESS, msg-> {
+
+        vertx.eventBus().consumer(kafkaAddress, msg-> {
             System.out.println("From Kafka: " + msg.body().toString());
         });
 
@@ -82,9 +98,10 @@ public class MQTTBroker extends AbstractVerticle {
             clusterID = config.getString("cluster_id");
             brokerID = config.getJsonObject("broker").getString("broker_id");
 
+
             // 1 store x 1 broker
-            deployStoreVerticle(1);
-            sessionStore = ISessionStore.getSessionStore("DB");
+            deployStoreVerticle();
+            deployStateServer();
 
 
             JsonObject brokerConf = config.getJsonObject("broker");
@@ -104,6 +121,15 @@ public class MQTTBroker extends AbstractVerticle {
         }
     }
 
+    private void deployStateServer() {
+        HttpServer server = vertx.createHttpServer();
+        server.requestHandler(req-> {
+            if (req.method() == HttpMethod.GET) {
+                req.response().end(sessionStore.toString());
+            }
+        });
+        server.listen(8989);
+    }
 
 
     private void startTcpServer(ConfigParser c) {
