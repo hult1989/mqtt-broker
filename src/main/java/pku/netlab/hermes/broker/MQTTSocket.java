@@ -246,7 +246,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 resetKeepAliveTimer();
 
                 PublishMessage publish = (PublishMessage)msg;
-                //session.handlePublishMessage(publish);
+                //session.handlePublishMessageReceived(publish);
                 switch (publish.getQos()) {
                     case RESERVED:
                         break;

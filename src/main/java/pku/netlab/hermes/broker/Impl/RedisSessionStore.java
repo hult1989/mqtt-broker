@@ -11,6 +11,9 @@ import io.vertx.redis.RedisClient;
 
 /**
  * Created by hult on 1/13/17.
+ * use redis set and string two data structure
+ * set: broker-001-> {hult, alice, bob...}
+ * string: hult: broker-001
  */
 public class RedisSessionStore implements ISessionStore{
     Logger logger = LoggerFactory.getLogger(RedisSessionStore.class);

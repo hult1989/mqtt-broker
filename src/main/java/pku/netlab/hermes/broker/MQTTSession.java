@@ -89,7 +89,7 @@ public class MQTTSession {
             if (!res.succeeded()) {
                 logger.error("failed to add session for " + res.cause().getMessage());
             } else {
-                logger.info("add user session to redis");
+                logger.info("add user [" + clientID + "] to redis");
             }
         });
     }
@@ -157,6 +157,7 @@ public class MQTTSession {
     //use this method to publish message
     public void handlePublishMessageReceived(PublishMessage publishMessage) {
 
+
         boolean publishMessageToThisClient = false;
         int maxQos = -1;
 
@@ -210,6 +211,10 @@ public class MQTTSession {
     private void sendPublishMessage(PublishMessage pm) {
         if(publishMessageHandler!=null)
             publishMessageHandler.handle(pm);
+    }
+
+    private void messageEnque(PublishMessage message) {
+
     }
 
 
