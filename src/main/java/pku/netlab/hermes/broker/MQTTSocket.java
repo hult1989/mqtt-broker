@@ -1,10 +1,5 @@
 package pku.netlab.hermes.broker;
 
-import pku.netlab.hermes.ConfigParser;
-import pku.netlab.hermes.MQTTPacketTokenizer;
-import pku.netlab.hermes.QOSUtils;
-import pku.netlab.hermes.parser.MQTTDecoder;
-import pku.netlab.hermes.parser.MQTTEncoder;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -12,37 +7,41 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.net.NetSocket;
 import org.dna.mqtt.moquette.proto.messages.*;
+import pku.netlab.hermes.MQTTPacketTokenizer;
+import pku.netlab.hermes.QOSUtils;
+import pku.netlab.hermes.parser.MQTTDecoder;
+import pku.netlab.hermes.parser.MQTTEncoder;
 
 import static org.dna.mqtt.moquette.proto.messages.AbstractMessage.*;
 
 /**
- * Created by giovanni on 07/05/2014.
  * Base class for connection handling, 1 tcp connection corresponds to 1 instance of this class.
  */
 public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
 
     private static Logger logger = LoggerFactory.getLogger(MQTTSocket.class);
 
-    protected Vertx vertx;
+    private Vertx vertx;
+    private MQTTSession session;
+    private String remoteAddr;
+    private CoreProcessor m_processor;
+
     private MQTTDecoder decoder;
     private MQTTEncoder encoder;
     private MQTTPacketTokenizer tokenizer;
-    protected MQTTSession session;
-    private ConfigParser config;
-    protected String remoteAddr;
     private NetSocket netSocket;
     private long keepAliveTimerID = -1;
     private boolean keepAliveTimeEnded;
     private Handler<String> keepaliveErrorHandler;
 
-    public MQTTSocket(Vertx vertx, ConfigParser config, NetSocket netSocket) {
+    public MQTTSocket(Vertx vertx, NetSocket netSocket, CoreProcessor processor) {
         this.decoder = new MQTTDecoder();
         this.encoder = new MQTTEncoder();
         this.tokenizer = new MQTTPacketTokenizer();
         this.tokenizer.registerListener(this);
         this.vertx = vertx;
-        this.config = config;
         this.netSocket = netSocket;
+        this.m_processor = processor;
     }
     public void start() {
         netSocket.setWriteQueueMaxSize(500);
@@ -81,7 +80,6 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     }
 
     private void clean() {
-        logger.warn("clean call references");
         if(tokenizer!=null) {
             tokenizer.removeAllListeners();
             tokenizer = null;
@@ -91,6 +89,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
             session = null;
         }
         vertx = null;
+        m_processor = null;
     }
 
     @Override
@@ -173,18 +172,18 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
                      */
-                    MQTTSession existingSession = MQTTBroker.onlineSessions.get(connect.getClientID());
+                   String clientID = connect.getClientID();
+                    MQTTSession existingSession = m_processor.getClientSession(clientID);
                     if (existingSession != null) {
+                        logger.info("close existing session of " + clientID);
                         existingSession.shutdown();
                     }
 
-                    session = new MQTTSession(this, config);
+                    session = new MQTTSession(this, m_processor);
                     session.setPublishMessageHandler(this::sendMessageToClient);
+                    m_processor.clientLogin(clientID, session, aVoid->{});
 
-                    MQTTBroker.onlineSessions.put(connect.getClientID(), session);
-
-                    setKeepaliveErrorHandler(clientID -> {
-                        String cinfo = clientID;
+                    setKeepaliveErrorHandler(cinfo -> {
                         if (session != null) {
                             cinfo = session.getClientInfo();
                         }
@@ -194,18 +193,10 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
 
                     connAck.setSessionPresent(false);
                     try {
-                        session.handleConnectMessage(connect, authenticated -> {
-                            if (authenticated) {
-                                connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
-                                sendMessageToClient(connAck);
-                                startKeepAliveTimer(connect.getKeepAlive());
-                                //session.handleArchiveMsg();
-                            } else {
-                                logger.error("Authentication failed! clientID= " + connect.getClientID() + " username=" + connect.getUsername());
-                                connAck.setReturnCode(ConnAckMessage.BAD_USERNAME_OR_PASSWORD);
-                                sendMessageToClient(connAck);
-                            }
-                        });
+                        session.handleConnectMessage(connect);
+                        connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
+                        sendMessageToClient(connAck);
+                        startKeepAliveTimer(connect.getKeepAlive());
                     } catch (Exception e) {
                         e.printStackTrace();
                         logger.warn("session failed to process CONNECT because " + e.getMessage());
@@ -244,12 +235,9 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 break;
             case PUBLISH:
                 resetKeepAliveTimer();
-
                 PublishMessage publish = (PublishMessage)msg;
-                //session.handlePublishMessageReceived(publish);
+                m_processor.enqueKafka(publish);
                 switch (publish.getQos()) {
-                    case RESERVED:
-                        break;
                     case MOST_ONE:
                         break;
                     case LEAST_ONE:
@@ -285,12 +273,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 break;
             case PUBACK:
                 resetKeepAliveTimer();
-                //session.handlePushAck((PubAckMessage)msg);
-
-
-                // A PUBACK message is the response to a PUBLISH message with QoS level 1.
-                // A PUBACK message is sent by a server in response to a PUBLISH message from a publishing client,
-                // and by a subscriber in response to a PUBLISH message from the server.
+                session.handlePublishAck((PubAckMessage)msg);
                 break;
             case PINGREQ:
                 resetKeepAliveTimer();
@@ -307,9 +290,6 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                 logger.warn("type of message not known: "+ msg.getClass().getSimpleName());
                 break;
         }
-
-        // TODO: forward mqtt message to backup server
-
     }
 
 

@@ -1,6 +1,5 @@
 package pku.netlab.hermes.broker;
 
-import io.vertx.core.Handler;
 import org.dna.mqtt.moquette.proto.messages.PublishMessage;
 
 /**
@@ -13,7 +12,5 @@ public interface IMessageQueue {
     using eventbus may be a good idea, but be aware of eventbus address conflicts.
     */
 
-    void setMessageHandler(Handler<PublishMessage> handler);
-
-    void enqueue(PublishMessage message);
+    void enQueue(PublishMessage message);
 }

@@ -1,13 +1,13 @@
 package pku.netlab.hermes.broker.Impl;
 
-import pku.netlab.hermes.broker.ISessionStore;
-import io.vertx.core.AsyncResult;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
+import io.vertx.core.*;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.redis.RedisClient;
+import io.vertx.redis.RedisOptions;
+import pku.netlab.hermes.broker.ISessionStore;
 
 /**
  * Created by hult on 1/13/17.
@@ -19,8 +19,9 @@ public class RedisSessionStore implements ISessionStore{
     Logger logger = LoggerFactory.getLogger(RedisSessionStore.class);
     private RedisClient redisClient;
 
-    public RedisSessionStore(RedisClient redisClient) {
-        this.redisClient = redisClient;
+    public RedisSessionStore(Vertx vertx, JsonObject config) {
+        this.redisClient = RedisClient.create(vertx, new RedisOptions(config));
+        logger.info("redis deployed at " + Thread.currentThread().getName());
     }
 
     @Override
@@ -67,6 +68,11 @@ public class RedisSessionStore implements ISessionStore{
                 });
             }
         });
+    }
+
+    @Override
+    public void getAllMembers(String brokerID, Handler<AsyncResult<JsonArray>> handler) {
+        this.redisClient.smembers(brokerID, handler);
     }
 }
 

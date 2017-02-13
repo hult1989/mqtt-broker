@@ -1,237 +1,100 @@
 package pku.netlab.hermes.broker;
 
-import pku.netlab.hermes.ConfigParser;
-import pku.netlab.hermes.ITopicsManager;
-import pku.netlab.hermes.MQTTTopicsManagerOptimized;
-import pku.netlab.hermes.QOSUtils;
-import pku.netlab.hermes.persistence.Subscription;
-import pku.netlab.hermes.pushservice.DBClient;
 import io.vertx.core.Handler;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import org.dna.mqtt.moquette.proto.messages.AbstractMessage.QOSType;
 import org.dna.mqtt.moquette.proto.messages.*;
+import pku.netlab.hermes.persistence.Subscription;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
- * Created by giovanni on 07/05/2014.
  * Base class for connection handling, 1 tcp connection corresponds to 1 instance of this class.
  */
 public class MQTTSession {
 
     private static Logger logger = LoggerFactory.getLogger(MQTTSession.class);
 
-    public static final String ADDRESS = "MQTT_BROKER_EVENTBUS";
-//    public static final String AUTHORIZATION_ADDRESS = "io.github.giovibal.mqtt.OAuth2AuthenticatorVerticle";
-
     private MQTTSocket clientSocket;
-    private ITopicsManager topicsManager;
     private String clientID;
-    private String protoName;
     private boolean cleanSession;
     private Handler<PublishMessage> publishMessageHandler;
-    private Map<String, Subscription> subscriptions;
-    private QOSUtils qosUtils;
-    private Map<String, List<Subscription>> matchingSubscriptionsCache;
-    private IMessageStore messageStore;
-    private ISessionStore sessionStore;
+    private CoreProcessor m_processor;
+    private int msgID;
+    private HashMap<Integer, PublishMessage> inFlightMsgs;
 
 
-    public MQTTSession(MQTTSocket socket, ConfigParser config) {
+    public MQTTSession(MQTTSocket socket, CoreProcessor processor) {
         this.clientSocket = socket;
-        this.subscriptions = new LinkedHashMap<>();
-        this.qosUtils = new QOSUtils();
-        this.matchingSubscriptionsCache = new HashMap<>();
-
-        this.topicsManager = new MQTTTopicsManagerOptimized();
-        this.messageStore = IMessageStore.getStore("DBStore");
-        this.sessionStore = MQTTBroker.getSessionStore();
+        this.m_processor = processor;
+        this.msgID = -1;
+        this.inFlightMsgs = new HashMap<>();
     }
 
     public void setPublishMessageHandler(Handler<PublishMessage> publishMessageHandler) {
         this.publishMessageHandler = publishMessageHandler;
     }
 
-    public int nextMessageID() {
-        return 0;
+    public void handlePublishAck(PubAckMessage ack) {
+        inFlightAcknowledged(ack.getMessageID());
     }
 
-    public void inFlightAcknowledged(int messageID) {
-
+    private int nextMessageID() {
+        msgID = (1 + msgID) % 65536;
+        return msgID;
     }
 
-    public void enqueue(AbstractMessage message) {
-
+    private void inFlightAcknowledged(int messageID) {
+        inFlightMsgs.remove(msgID);
     }
 
 
-
-
-    //@hult
-    public void handleConnectMessage(ConnectMessage connectMessage,
-                                     Handler<Boolean> authHandler)
-            throws Exception {
+    public void handleConnectMessage(ConnectMessage connectMessage) throws Exception {
 
         this.clientID = connectMessage.getClientID();
         this.cleanSession = connectMessage.isCleanSession();
-        this.protoName = connectMessage.getProtocolName();
-        if("MQIsdp".equals(protoName)) {
-            logger.info("Detected MQTT v. 3.1 " + protoName + ", clientID: " + clientID);
-        } else if("MQTT".equals(protoName)) {
-            logger.info("Detected MQTT v. 3.1.1 " + protoName + ", clientID: " + clientID);
-        } else {
-            logger.info("Detected MQTT protocol " + protoName + ", clientID: " + clientID);
-        }
-
         _handleConnectMessage(connectMessage);
-        authHandler.handle(Boolean.TRUE);
-        this.sessionStore.addClient(MQTTBroker.brokerID,  clientID, res-> {
-            if (!res.succeeded()) {
-                logger.error("failed to add session for " + res.cause().getMessage());
-            } else {
-                logger.info("add user [" + clientID + "] to redis");
-            }
-        });
     }
 
-    //TODO: 这样似乎是不够的，因为没法确定客户端会如何处理自己未订阅的消息
-    /*
-    private void registerPushService(String clientID) {
-        //自定义的方法，每个连接的用户都在eventbus中关注了自己的id，以便从中接受消息
-        this.pushConsumer = vertx.eventBus().consumer(clientID);
-
-        logger.info(String.format("%s subscribe %s from eventbus", this.toString(), clientID));
-        this.pushConsumer.handler(message -> {
-            int maxQos = 2;
-            PublishMessage publishMessage = null;
-            try {
-                publishMessage = (PublishMessage) this.decoder.dec(message.body());
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            AbstractMessage.QOSType originalQos = publishMessage.getQos();
-            int iSentQos = qosUtils.toInt(originalQos);
-            int iOkQos = qosUtils.calculatePublishQos(iSentQos, maxQos);
-            AbstractMessage.QOSType qos = qosUtils.toQos(iOkQos);
-            publishMessage.setQos(qos);
-            this.sendPublishMessage(publishMessage);
-        });
-    }
-    */
 
     private void _handleConnectMessage(ConnectMessage connectMessage) {
         if (!cleanSession) {
             logger.info("cleanSession=false: restore old session state with subscriptions ...");
-            messageStore.loadStore();
         } else {
-            messageStore.dropAllMessages();
         }
         logger.info("New connection client : " + getClientInfo());
     }
 
 
-
-
     public void handleSubscribeMessage(SubscribeMessage subscribeMessage) {
-        try {
-            final int messageID = subscribeMessage.getMessageID();
-
-            // invalidate matching topic cache
-            matchingSubscriptionsCache.clear();
-
-            List<SubscribeMessage.Couple> subs = subscribeMessage.subscriptions();
-            for(SubscribeMessage.Couple s : subs) {
-                String topicFilter = s.getTopicFilter();
-                Subscription sub = new Subscription();
-                sub.setQos(s.getQos());
-                sub.setTopicFilter(topicFilter);
-                this.subscriptions.put(topicFilter, sub);
-
-            }
-        } catch(Throwable e) {
-            logger.error(e.getMessage());
-        }
     }
 
 
-    //use this method to publish message
-    public void handlePublishMessageReceived(PublishMessage publishMessage) {
-
-
-        boolean publishMessageToThisClient = false;
-        int maxQos = -1;
-
-        /*
-         * the Server MUST deliver the message to the Client respecting the maximum QoS of all the matching subscriptions
-         */
-        String topic = publishMessage.getTopicName();
-        List<Subscription> subs = getAllMatchingSubscriptions(topic);
-        if(subs!=null && subs.size()>0) {
-            publishMessageToThisClient = true;
-            for (Subscription s : subs) {
-                int itemQos = s.getQos();
-                if (itemQos > maxQos) {
-                    maxQos = itemQos;
-                }
-                // optimization: if qos==2 is alredy **the max** allowed
-                if(maxQos == 2)
-                    break;
-            }
+    //call this method to publish message to client
+    public void handlePublishMessage(PublishMessage publishMessage) {
+        QOSType originalQos = publishMessage.getQos();
+        if (originalQos == QOSType.LEAST_ONE) {
+            publishMessage.setMessageID(nextMessageID());
+            inFlightMsgs.put(publishMessage.getMessageID(), publishMessage);
         }
-
-        if(publishMessageToThisClient) {
-            // the qos cannot be bigger than the subscribe requested qos ...
-            AbstractMessage.QOSType originalQos = publishMessage.getQos();
-            int iSentQos = qosUtils.toInt(originalQos);
-            int iOkQos = qosUtils.calculatePublishQos(iSentQos, maxQos);
-            AbstractMessage.QOSType qos = qosUtils.toQos(iOkQos);
-            publishMessage.setQos(qos);
-            sendPublishMessage(publishMessage);
-        }
+        sendPublishMessage(publishMessage);
     }
 
     private List<Subscription> getAllMatchingSubscriptions(String topic) {
-        List<Subscription> ret = new ArrayList<>();
-//        String topic = pm.getTopicName();
-        if(matchingSubscriptionsCache.containsKey(topic)) {
-            return matchingSubscriptionsCache.get(topic);
-        }
-        // check if topic of published message pass at least one of the subscriptions
-        for (Subscription c : subscriptions.values()) {
-            String topicFilter = c.getTopicFilter();
-            boolean match = topicsManager.match(topic, topicFilter);
-            if (match) {
-                ret.add(c);
-            }
-        }
-        matchingSubscriptionsCache.put(topic, ret);
-        return ret;
+        return new LinkedList<>();
     }
 
-    private void sendPublishMessage(PublishMessage pm) {
+    public void sendPublishMessage(PublishMessage pm) {
         if(publishMessageHandler!=null)
             publishMessageHandler.handle(pm);
-    }
-
-    private void messageEnque(PublishMessage message) {
-
     }
 
 
 
     public void handleUnsubscribeMessage(UnsubscribeMessage unsubscribeMessage) {
-        try {
-            List<String> topicFilterSet = unsubscribeMessage.topicFilters();
-            for (String topicFilter : topicFilterSet) {
-                if(subscriptions!=null) {
-                    subscriptions.remove(topicFilter);
-                    matchingSubscriptionsCache.clear();
-                }
-            }
-        }
-        catch(Throwable e) {
-            logger.error(e.getMessage());
-        }
     }
 
     public void handleDisconnect(DisconnectMessage disconnectMessage) {
@@ -246,19 +109,16 @@ public class MQTTSession {
     }
 
     public void shutdown() {
-        MQTTBroker.onlineSessions.remove(clientID);
-        this.sessionStore.removeClient(MQTTBroker.brokerID, clientID, res-> {
-            if (!res.succeeded()) {
-                logger.error("failed to remove user session " + clientID);
-            } else {
-                logger.info("remove user " + clientID + " session");
-            }
-        });
+        //TODO if not clean session, in flight messages should be saved to database
+        if (m_processor != null) {
+            m_processor.clientLogout(clientID);
+        }
         logger.info(this.toString() + " will shut down, removed from online sessions");
         if (this.clientSocket != null) {
             this.clientSocket.closeConnection();
         }
         this.clientSocket = null;
+        this.m_processor = null;
         // stop timers
     }
 
@@ -268,18 +128,12 @@ public class MQTTSession {
     }
 
     public String getClientInfo() {
-        String clientInfo ="clientID: "+ clientID +", MQTT protocol: "+ protoName +"";
-        return clientInfo;
+        return clientID;
     }
 
     public void handlePushAck(PubAckMessage puback) {
-        //从消息队列中移除
-        DBClient.getRedisClient().srem("mq:" + this.clientID, String.valueOf(puback.getMessageID()), null);
-        //溢出seq到msgID的映射
-        DBClient.getRedisClient().del(this.clientID + ":" + puback.getMessageID(), null);
     }
 
-    //@hult 2016-10-24
     /*
     public void handleArchiveMsg() {
         RedisClient redis = DBClient.getRedisClient();

@@ -59,9 +59,9 @@ def init_client(host):
     client.on_connect = on_connect
     client.on_message = on_message
     client.on_disconnect = on_disconnect
-    client.on_log = on_log
+    #client.on_log = on_log
 
-    client.connect(host, 1883, 4)
+    client.connect(host, 1883, 40)
     t = Thread(target=read2q, args=(client,))
     t.start()
     client.loop_forever()

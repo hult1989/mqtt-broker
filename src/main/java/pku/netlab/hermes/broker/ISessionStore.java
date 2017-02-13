@@ -2,6 +2,7 @@ package pku.netlab.hermes.broker;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
+import io.vertx.core.json.JsonArray;
 
 /**
  * Created by hult on 1/7/17.
@@ -16,4 +17,5 @@ public interface ISessionStore {
 
     void clearBrokerSession(String brokerID, Handler<AsyncResult<Void>> handler);
 
+    void getAllMembers(String brokerID, Handler<AsyncResult<JsonArray>> handler);
 }
