@@ -11,7 +11,6 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!--<vertx.version>3.2.1</vertx.version>-->
         <vertx.version>3.3.3</vertx.version>
         <vertx.scope>provided</vertx.scope>
         <wso2.scope>provided</wso2.scope>
@@ -51,6 +50,7 @@
             <groupId>com.cyngn.vertx</groupId>
             <artifactId>vertx-kafka</artifactId>
             <version>0.4.1</version>
+            <scope>${vertx.scope}</scope>
         </dependency>
         <dependency>
             <groupId>commons-io</groupId>
@@ -59,12 +59,6 @@
             <scope>${vertx.scope}</scope>
         </dependency>
 
-        <dependency>
-            <groupId>org.wso2.carbon.commons</groupId>
-            <artifactId>org.wso2.carbon.identity.oauth.stub</artifactId>
-            <version>4.4.7</version>
-            <scope>${wso2.scope}</scope>
-        </dependency>
 
         <!--Test dependencies-->
         <dependency>
@@ -95,20 +89,6 @@
             <artifactId>vertx-redis-client</artifactId>
             <version>3.3.2</version>
         </dependency>
-        <dependency>
-            <groupId>as.leap</groupId>
-            <artifactId>vertx-rpc</artifactId>
-            <version>3.3.8</version>
-        </dependency>
-        <dependency>
-            <groupId>io.reactivex</groupId>
-            <artifactId>rxjava</artifactId>
-            <version>1.2.5</version>
-        </dependency>
-
-
-
-
     </dependencies>
 
     <build>
@@ -170,7 +150,6 @@
         </plugins>
     </build>
 
-
     <profiles>
         <profile>
             <id>include-vertx</id>
@@ -179,15 +158,6 @@
             </activation>
             <properties>
                 <vertx.scope>compile</vertx.scope>
-            </properties>
-        </profile>
-        <profile>
-            <id>include-wso2-auth</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <properties>
-                <wso2.scope>compile</wso2.scope>
             </properties>
         </profile>
 

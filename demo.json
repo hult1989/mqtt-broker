@@ -7,7 +7,7 @@
     },
 
   "zookeepers": {
-    "zookeeperHosts": "laptop",
+    "zookeeperHosts": "server",
 	"sessionTimeout": 10000,
 	"connectTimeout": 3000,
 	"rootPath": "io.vertx",
@@ -20,22 +20,22 @@
 
   "kafka": {
     "consumer": {
-      "zookeeper.connect": "laptop:2181",
+      "zookeeper.connect": "server:2181",
       "group.id": "VertxBroker",
       "consumer.poll.interval.ms": 500,
       "auto.offset.reset": "smallest",
-      "bootstrap.servers": "laptop:9092"
+      "bootstrap.servers": "localhost:9092"
     },
     "producer": {
       "serializer.class": "org.apache.kafka.common.serialization.StringSerializer",
-      "bootstrap.servers": "laptop:9092",
+      "bootstrap.servers": "localhost:9092",
       "default_topic": "PUBLISH"
     }
   },
 
   "redis": {
-    "host": "laptop",
-    "port": 6379,
+    "host": "server",
+    "port": 6380,
     "encoding": "UTF-8",
     "tcpKeepAlive": true,
     "tcpNoDelay": true
