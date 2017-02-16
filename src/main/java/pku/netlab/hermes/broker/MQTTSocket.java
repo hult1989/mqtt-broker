@@ -1,5 +1,6 @@
 package pku.netlab.hermes.broker;
 
+import io.vertx.core.Context;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -32,7 +33,8 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     private NetSocket netSocket;
     private long keepAliveTimerID = -1;
     private boolean keepAliveTimeEnded;
-    private Handler<String> keepaliveErrorHandler;
+    private Handler<String> keepAliveErrorHandler;
+    public Context context;
 
     public MQTTSocket(Vertx vertx, NetSocket netSocket, CoreProcessor processor) {
         this.decoder = new MQTTDecoder();
@@ -42,6 +44,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
         this.vertx = vertx;
         this.netSocket = netSocket;
         this.m_processor = processor;
+        this.context = vertx.getOrCreateContext();
     }
     public void start() {
         netSocket.setWriteQueueMaxSize(500);
@@ -183,7 +186,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                     session.setPublishMessageHandler(this::sendMessageToClient);
                     m_processor.clientLogin(clientID, session, aVoid->{});
 
-                    setKeepaliveErrorHandler(cinfo -> {
+                    setKeepAliveErrorHandler(cinfo -> {
                         if (session != null) {
                             cinfo = session.getClientInfo();
                         }
@@ -332,8 +335,8 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                     logger.info("keep-alive timer end " + getClientInfo());
                     //should cancel timer first since close connection will set vertx to null
                     stopKeepAliveTimer();
-                    if (keepaliveErrorHandler != null && session != null) {
-                        keepaliveErrorHandler.handle(session.toString());
+                    if (keepAliveErrorHandler != null && session != null) {
+                        keepAliveErrorHandler.handle(session.toString());
                     }
                 }
                 // next time, will close connection
@@ -352,8 +355,8 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
             logger.error("Cannot stop keep-alive timer with ID: "+keepAliveTimerID +" "+ getClientInfo(), e);
         }
     }
-    private void setKeepaliveErrorHandler(Handler<String> handler) {
-        this.keepaliveErrorHandler = handler;
+    private void setKeepAliveErrorHandler(Handler<String> handler) {
+        this.keepAliveErrorHandler = handler;
     }
 
     public void resetKeepAliveTimer() {

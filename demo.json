@@ -24,11 +24,11 @@
       "group.id": "VertxBroker",
       "consumer.poll.interval.ms": 500,
       "auto.offset.reset": "smallest",
-      "bootstrap.servers": "localhost:9092"
+      "bootstrap.servers": "server:9092"
     },
     "producer": {
       "serializer.class": "org.apache.kafka.common.serialization.StringSerializer",
-      "bootstrap.servers": "localhost:9092",
+      "bootstrap.servers": "server:9092",
       "default_topic": "PUBLISH"
     }
   },

@@ -1,5 +1,6 @@
 package pku.netlab.hermes.broker;
 
+import io.vertx.core.Context;
 import io.vertx.core.Handler;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -25,6 +26,7 @@ public class MQTTSession {
     private CoreProcessor m_processor;
     private int msgID;
     private HashMap<Integer, PublishMessage> inFlightMsgs;
+    private Context context;
 
 
     public MQTTSession(MQTTSocket socket, CoreProcessor processor) {
@@ -32,6 +34,7 @@ public class MQTTSession {
         this.m_processor = processor;
         this.msgID = -1;
         this.inFlightMsgs = new HashMap<>();
+        this.context = socket.context;
     }
 
     public void setPublishMessageHandler(Handler<PublishMessage> publishMessageHandler) {
@@ -74,7 +77,12 @@ public class MQTTSession {
 
 
     //call this method to publish message to client
-    public void handlePublishMessage(PublishMessage publishMessage) {
+    public void handlePublishMessage(PublishMessage pub) {
+        context.runOnContext(v-> m_handlePublishMessage(pub));
+    }
+
+
+    private void m_handlePublishMessage(PublishMessage publishMessage) {
         QOSType originalQos = publishMessage.getQos();
         if (originalQos == QOSType.LEAST_ONE) {
             publishMessage.setMessageID(nextMessageID());
