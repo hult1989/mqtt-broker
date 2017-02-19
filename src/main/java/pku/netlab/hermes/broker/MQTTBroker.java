@@ -24,7 +24,7 @@ public class MQTTBroker extends AbstractVerticle {
 
     public static ISessionStore getSessionStore () {
         if (sessionStore == null) {
-            System.err.println("Session Store not init, exit!");
+            System.err.println("Session Store not deployManyVerticles, exit!");
             System.exit(0);
         }
         return sessionStore;

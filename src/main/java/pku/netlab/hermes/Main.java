@@ -69,7 +69,7 @@ public class Main {
                 JsonObject config = new JsonObject(json);
 
                 CoreProcessor processor = new CoreProcessor(config);
-                processor.init();
+                processor.deployManyVerticles();
 
                 deployClusterBroker(config);
             } catch(IOException e) {

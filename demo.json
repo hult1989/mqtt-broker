@@ -10,7 +10,7 @@
     "zookeeperHosts": "server",
 	"sessionTimeout": 10000,
 	"connectTimeout": 3000,
-	"rootPath": "io.vertx",
+	"rootPath": "hermes",
 	"retry": {
 		"initialSleepTime": 100,
 		"intervalTimes": 10000,
@@ -21,7 +21,7 @@
   "kafka": {
     "consumer": {
       "zookeeper.connect": "server:2181",
-      "group.id": "VertxBroker",
+      "group.id": "HermesKafka",
       "consumer.poll.interval.ms": 500,
       "auto.offset.reset": "smallest",
       "bootstrap.servers": "server:9092"

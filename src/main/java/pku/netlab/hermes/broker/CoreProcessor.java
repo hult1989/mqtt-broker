@@ -31,7 +31,7 @@ public class CoreProcessor {
         INSTANCE = this;
     }
 
-    public void init() {
+    public void deployManyVerticles() {
         messageQueue = deployKafka();
         sessionStore = deploySessionStore();
         sessionLocalMap = new ConcurrentHashMap<>();
@@ -44,8 +44,11 @@ public class CoreProcessor {
     }
 
     private IMessageQueue deployKafka() {
+        //create this vertx so that it can be isolated from clustered-eventbus
         Vertx kafkaVertx = Vertx.vertx();
-        return new KafkaMQ(kafkaVertx, config, this::handleMsgFromMQ);
+        JsonObject kafkaConfig = config.getJsonObject("kafka");
+        kafkaConfig.put("brokerID", config.getJsonObject("broker").getString("broker_id"));
+        return new KafkaMQ(kafkaVertx, kafkaConfig, this::handleMsgFromMQ);
     }
 
     static CoreProcessor getInstance() {

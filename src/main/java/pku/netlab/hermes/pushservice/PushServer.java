@@ -87,7 +87,7 @@ public class PushServer extends AbstractVerticle {
             if (result.succeeded()) {
                 System.out.println("push api starts");
             } else {
-                System.out.println("push server failed to init because of " + result.cause().getMessage());
+                System.out.println("push server failed to deployManyVerticles because of " + result.cause().getMessage());
             }
         });
     }
