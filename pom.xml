@@ -134,8 +134,8 @@
                                     <exclude>io.vertx:vertx-codegen</exclude>
                                     <exclude>junit:junit</exclude>
                                     <exclude>org.mvel:mvel2</exclude>
-                                    <!--exclude>log4j:log4j</exclude>
-                                    <exclude>org.slf4j:slf4j-api</exclude-->
+                                    <exclude>log4j:log4j</exclude>
+                                    <!--exclude>org.slf4j:slf4j-api</exclude-->
                                 </excludes>
                             </artifactSet>
                             <outputFile>${project.build.directory}/${project.artifactId}-${project.version}-fat.jar</outputFile>

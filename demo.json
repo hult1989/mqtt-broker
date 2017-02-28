@@ -1,7 +1,7 @@
 {
   "broker": {
       "tcp_port": 1883,
-      "socket_idle_timeout": 60,
+      "socket_idle_timeout": 600,
       "message_store": "DB",
       "broker_id": "broker-001"
     },

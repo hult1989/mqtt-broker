@@ -12,9 +12,6 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.spi.cluster.zookeeper.ZookeeperClusterManager;
 import org.apache.commons.io.FileUtils;
-import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.retry.ExponentialBackoffRetry;
 import pku.netlab.hermes.broker.CoreProcessor;
 import pku.netlab.hermes.broker.MQTTBroker;
 
@@ -81,6 +78,7 @@ public class Main {
 
     private static void deployClusterBroker(JsonObject config) {
         JsonObject zkConfig = config.getJsonObject("zookeepers");
+        /*
         CuratorFramework curator = CuratorFrameworkFactory.builder()
                 .connectString(zkConfig.getString("zookeeperHosts"))
                 .namespace(zkConfig.getString("rootPath", "io.vertx"))
@@ -92,10 +90,11 @@ public class Main {
                         zkConfig.getJsonObject("retry", new JsonObject()).getInteger("intervalTimes", 10000))
                 ).build();
         curator.start();
+        ZookeeperClusterManager manager = new ZookeeperClusterManager(curator, brokerID);
+        */
 
         String brokerID = config.getJsonObject("broker").getString("broker_id");
-        //ZookeeperClusterManager manager = new ZookeeperClusterManager(zkConfig);
-        ZookeeperClusterManager manager = new ZookeeperClusterManager(curator, brokerID);
+        ZookeeperClusterManager manager = new ZookeeperClusterManager(zkConfig);
         VertxOptions options = new VertxOptions().setClusterManager(manager);
 
 
@@ -106,7 +105,7 @@ public class Main {
                 MQTTBroker.clusterID = manager.getNodeID();
                 MQTTBroker.brokerID = config.getJsonObject("broker").getString("broker_id");
                 vertx.deployVerticle(MQTTBroker.class.getName(),
-                        new DeploymentOptions().setConfig(config).setInstances(Runtime.getRuntime().availableProcessors()));
+                        new DeploymentOptions().setConfig(config.getJsonObject("broker")).setInstances(Runtime.getRuntime().availableProcessors()));
                 logger.info("cluster broker deployed with id: " + MQTTBroker.clusterID);
 
             } else {

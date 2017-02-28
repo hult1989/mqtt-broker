@@ -345,6 +345,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
         }
     }
     private void stopKeepAliveTimer() {
+        if (keepAliveTimerID == -1) return;
         try {
             logger.info("keep-alive cancel old timer: " + keepAliveTimerID + " " + getClientInfo());
             boolean removed = vertx.cancelTimer(keepAliveTimerID);
