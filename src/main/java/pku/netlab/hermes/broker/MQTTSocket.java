@@ -26,6 +26,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     private MQTTSession session;
     private String remoteAddr;
     private CoreProcessor m_processor;
+    private MQTTBroker broker;
 
     private MQTTDecoder decoder;
     private MQTTEncoder encoder;
@@ -36,15 +37,16 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     private Handler<String> keepAliveErrorHandler;
     public Context context;
 
-    public MQTTSocket(Vertx vertx, NetSocket netSocket, CoreProcessor processor) {
+    public MQTTSocket(Vertx vertx, NetSocket netSocket, MQTTBroker broker) {
         this.decoder = new MQTTDecoder();
         this.encoder = new MQTTEncoder();
         this.tokenizer = new MQTTPacketTokenizer();
         this.tokenizer.registerListener(this);
         this.vertx = vertx;
         this.netSocket = netSocket;
-        this.m_processor = processor;
+        this.m_processor = broker.processor;
         this.context = vertx.getOrCreateContext();
+        this.broker = broker;
     }
     public void start() {
         netSocket.setWriteQueueMaxSize(500);
@@ -175,16 +177,12 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
                      */
-                   String clientID = connect.getClientID();
-                    MQTTSession existingSession = m_processor.getClientSession(clientID);
-                    if (existingSession != null) {
-                        logger.info("close existing session of " + clientID);
-                        existingSession.shutdown();
-                    }
-
-                    session = new MQTTSession(this, m_processor);
-                    session.setPublishMessageHandler(this::sendMessageToClient);
-                    m_processor.clientLogin(clientID, session, aVoid->{});
+                    String clientID = connect.getClientID();
+                    this.session = new MQTTSession(this, m_processor);
+                    this.session.setPublishMessageHandler(this::sendMessageToClient);
+                    m_processor.clientLogin(clientID, session, aVoid->{
+                        this.broker.addSession(clientID, session);
+                    });
 
                     setKeepAliveErrorHandler(cinfo -> {
                         if (session != null) {

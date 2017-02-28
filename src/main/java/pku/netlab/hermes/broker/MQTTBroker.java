@@ -1,43 +1,36 @@
 package pku.netlab.hermes.broker;
 
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Context;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.net.NetServer;
 import io.vertx.core.net.NetServerOptions;
-import pku.netlab.hermes.ConfigParser;
+import org.dna.mqtt.moquette.proto.messages.PublishMessage;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.HashMap;
 
 
 public class MQTTBroker extends AbstractVerticle {
-
-    public CoreProcessor processor;
+    public final CoreProcessor processor;
+    private HashMap<String, MQTTSession> threadLocalSessionMap;
     private Logger logger = LoggerFactory.getLogger(MQTTBroker.class);
+    private Context threadLocalContext;
 
-    public static String clusterID = null;
-    public static String brokerID = null;
-    public static ConcurrentHashMap<String, MQTTSession> onlineSessions = new ConcurrentHashMap<>();
-
-    private static ISessionStore sessionStore;
-    private static IMessageQueue messageQueue;
-
-    public static ISessionStore getSessionStore () {
-        if (sessionStore == null) {
-            System.err.println("Session Store not deployManyVerticles, exit!");
-            System.exit(0);
-        }
-        return sessionStore;
+    public MQTTBroker(CoreProcessor processor) {
+        this.processor = processor;
+        this.threadLocalSessionMap = new HashMap<>();
     }
 
     @Override
     public void start() {
         try {
-            processor = CoreProcessor.getInstance();
-            ConfigParser c = new ConfigParser(config());
-            startTcpServer(c);
-            logger.info(String.format("Start Broker ==> [port: %d] [%s] [socket_idle_timeout: %d] [%s]",
-                    c.getPort(), c.getFeatursInfo(), c.getSocketIdleTimeout(), Thread.currentThread().getName()));
+            this.threadLocalContext = vertx.getOrCreateContext();
+            JsonObject brokerConf = config();
+            startTcpServer(brokerConf);
+            logger.info(String.format("Start Broker ==> [port: %d] [socket_idle_timeout: %d] [%s]",
+                    brokerConf.getInteger("tcp_port"), brokerConf.getInteger("socket_idle_timeout"), Thread.currentThread().getName()));
 
         } catch(Exception e ) {
             logger.error(e.getMessage(), e);
@@ -46,9 +39,9 @@ public class MQTTBroker extends AbstractVerticle {
 
     //deploy debug server
 
-    private void startTcpServer(ConfigParser c) {
-        int port = c.getPort();
-        int idleTimeout = c.getSocketIdleTimeout();
+    private void startTcpServer(JsonObject c) {
+        int port = c.getInteger("tcp_port");
+        int idleTimeout = c.getInteger("socket_idle_timeout");
 
         NetServerOptions opt = new NetServerOptions()
                 .setTcpKeepAlive(true)
@@ -60,11 +53,35 @@ public class MQTTBroker extends AbstractVerticle {
 
         NetServer netServer = vertx.createNetServer(opt);
         netServer.connectHandler(netSocket -> {
-            MQTTSocket mqttSocket = new MQTTSocket(vertx, netSocket, processor);
+            MQTTSocket mqttSocket = new MQTTSocket(vertx, netSocket, this);
             logger.info("a client connected from " + netSocket.remoteAddress());
             //TODO: make sessionStore and onlineUsers thread-safe
             mqttSocket.start();
         }).listen();
     }
 
+    public void shutDownClientSession(String clientID) {
+        threadLocalContext.runOnContext(aVoid-> {
+            MQTTSession session = threadLocalSessionMap.get(clientID);
+            if (session != null) {
+                session.shutdown();
+                threadLocalSessionMap.remove(clientID);
+            }
+        });
+    }
+
+    public void addSession(String clientID, MQTTSession session) {
+        threadLocalContext.runOnContext(aVoid-> {
+            threadLocalSessionMap.put(clientID, session);
+        });
+    }
+
+    public void sendMessage(String clientID, PublishMessage msg) {
+        threadLocalContext.runOnContext(aVoid-> {
+            MQTTSession session = threadLocalSessionMap.get(clientID);
+            if (session != null) {
+                session.sendPublishMessage(msg);
+            }
+        });
+    }
 }
