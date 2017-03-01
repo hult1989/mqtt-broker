@@ -1,16 +1,20 @@
 package pku.netlab.hermes.broker;
 
 import io.vertx.core.*;
+import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.spi.cluster.zookeeper.ZookeeperClusterManager;
+import org.dna.mqtt.moquette.proto.messages.AbstractMessage;
 import org.dna.mqtt.moquette.proto.messages.PublishMessage;
 import pku.netlab.hermes.ClusterCommunicator;
 import pku.netlab.hermes.broker.Impl.KafkaMQ;
 import pku.netlab.hermes.broker.Impl.RedisSessionStore;
+import pku.netlab.hermes.parser.MQTTEncoder;
 
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,18 +25,23 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class CoreProcessor {
     private final String brokerID;
-    private final Vertx brokerVertx = Vertx.vertx();
+    private final Vertx brokerVertx;
     private final Logger logger = LoggerFactory.getLogger(CoreProcessor.class);
     private final JsonObject config;
+    private final EventBus localEB;
     private ISessionStore sessionStore;
     private IMessageQueue messageQueue;
     private ConcurrentMap<String, MQTTSession> sessionLocalMap;
     private ArrayList<MQTTBroker> brokerList;
+    private MQTTEncoder encoder;
 
     public CoreProcessor(JsonObject config) {
+        this.brokerVertx = Vertx.vertx();
         this.config = config;
         this.brokerID = config.getJsonObject("broker").getString("broker_id");
         this.brokerList = new ArrayList<>(Runtime.getRuntime().availableProcessors());
+        this.localEB = brokerVertx.eventBus();
+        this.encoder = new MQTTEncoder();
     }
 
     public void deployManyVerticles() {
@@ -122,14 +131,14 @@ public class CoreProcessor {
     }
 
 
-    void clientLogin(String clientID, MQTTSession session, Handler<AsyncResult<Void>> handler){
+    void clientLogin(String clientID, Handler<AsyncResult<Void>> handler){
         //keep track of which
-        sessionLocalMap.put(clientID, session);
+        //localEB.send(clientID, new DisconnectMessage());
         sessionStore.addClient(brokerID, clientID, handler);
     };
 
     void clientLogout(String clientID){
-        sessionLocalMap.remove(clientID);
+        //sessionLocalMap.remove(clientID);
         sessionStore.removeClient(brokerID, clientID, aVoid->{});
     };
 
@@ -144,7 +153,21 @@ public class CoreProcessor {
     void updateClientStatus(){}
 
     void handleMsgFromMQ(JsonObject msg){
-        System.out.println(Thread.currentThread().getName() + msg.toString());
+        JsonObject value = new JsonObject(msg.getString("value"));
+        try {
+            JsonArray targets = value.getJsonArray("targets");
+            PublishMessage publishMessage = new PublishMessage();
+            publishMessage.setPayload(value.getString("msg"));
+            publishMessage.setQos(AbstractMessage.QOSType.LEAST_ONE);
+            publishMessage.setMessageID((int)System.currentTimeMillis() % 65536);
+            for (Object o: targets.getList()) {
+                String client = (String) o;
+                publishMessage.setTopicName(client);
+                localEB.send(client, encoder.enc(publishMessage));
+            }
+        } catch (Exception e) {
+            logger.error(e.getMessage());
+        }
     }
 
     void saveSubscription(){};
@@ -153,7 +176,6 @@ public class CoreProcessor {
 
     void enqueKafka(PublishMessage publishMessage) {
         messageQueue.enQueue(publishMessage);
-
     }
 
 }

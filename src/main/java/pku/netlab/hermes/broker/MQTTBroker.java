@@ -2,6 +2,7 @@ package pku.netlab.hermes.broker;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Context;
+import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -53,7 +54,7 @@ public class MQTTBroker extends AbstractVerticle {
 
         NetServer netServer = vertx.createNetServer(opt);
         netServer.connectHandler(netSocket -> {
-            MQTTSocket mqttSocket = new MQTTSocket(vertx, netSocket, this);
+            MQTTSocket mqttSocket = new MQTTSocket(vertx, netSocket, processor);
             logger.info("a client connected from " + netSocket.remoteAddress());
             //TODO: make sessionStore and onlineUsers thread-safe
             mqttSocket.start();
@@ -83,5 +84,9 @@ public class MQTTBroker extends AbstractVerticle {
                 session.sendPublishMessage(msg);
             }
         });
+    }
+
+    public EventBus getServerWideEventbus() {
+        return vertx.eventBus();
     }
 }

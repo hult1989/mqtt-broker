@@ -53,7 +53,7 @@ def on_message(client, userdata, msg):
 
 def init_client(host):
     #userId = str(randint(10000, 100000))
-    userId = 'alice'
+    userId = 'hult'
     client = mqtt.Client(client_id=userId, clean_session=True)
     client.userId = userId
     client.on_connect = on_connect

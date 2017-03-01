@@ -1,9 +1,11 @@
 package pku.netlab.hermes.broker;
 
-import io.vertx.core.Context;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.eventbus.EventBus;
+import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.net.NetSocket;
@@ -18,7 +20,7 @@ import static org.dna.mqtt.moquette.proto.messages.AbstractMessage.*;
 /**
  * Base class for connection handling, 1 tcp connection corresponds to 1 instance of this class.
  */
-public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
+public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Handler<Message<Buffer>> {
 
     private static Logger logger = LoggerFactory.getLogger(MQTTSocket.class);
 
@@ -26,7 +28,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     private MQTTSession session;
     private String remoteAddr;
     private CoreProcessor m_processor;
-    private MQTTBroker broker;
+    private EventBus localServerEB;
 
     private MQTTDecoder decoder;
     private MQTTEncoder encoder;
@@ -35,19 +37,19 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
     private long keepAliveTimerID = -1;
     private boolean keepAliveTimeEnded;
     private Handler<String> keepAliveErrorHandler;
-    public Context context;
+    private MessageConsumer<Buffer> consumer;
 
-    public MQTTSocket(Vertx vertx, NetSocket netSocket, MQTTBroker broker) {
+    public MQTTSocket(Vertx vertx, NetSocket netSocket, CoreProcessor processor) {
         this.decoder = new MQTTDecoder();
         this.encoder = new MQTTEncoder();
         this.tokenizer = new MQTTPacketTokenizer();
         this.tokenizer.registerListener(this);
         this.vertx = vertx;
         this.netSocket = netSocket;
-        this.m_processor = broker.processor;
-        this.context = vertx.getOrCreateContext();
-        this.broker = broker;
+        this.m_processor = processor;
+        this.localServerEB = vertx.eventBus();
     }
+
     public void start() {
         netSocket.setWriteQueueMaxSize(500);
         netSocket.handler(buf-> {
@@ -62,7 +64,6 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
             String clientInfo = getClientInfo();
             logger.info(clientInfo + ", net-socket closed ... " + netSocket.writeHandlerID());
             clean();
-
         });
     }
 
@@ -92,6 +93,10 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
         if(session!=null) {
             session.shutdown();
             session = null;
+        }
+        if (this.consumer != null) {
+            consumer.unregister();
+            this.consumer = null;
         }
         vertx = null;
         m_processor = null;
@@ -180,13 +185,13 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                     String clientID = connect.getClientID();
                     this.session = new MQTTSession(this, m_processor);
                     this.session.setPublishMessageHandler(this::sendMessageToClient);
-                    m_processor.clientLogin(clientID, session, aVoid->{
-                        this.broker.addSession(clientID, session);
-                    });
+
+                    m_processor.clientLogin(clientID, aVoid->{
+
 
                     setKeepAliveErrorHandler(cinfo -> {
                         if (session != null) {
-                            cinfo = session.getClientInfo();
+                            cinfo = session.getClientID();
                         }
                         logger.warn("keep alive exhausted! closing connection for client[" + cinfo + "] ...");
                         closeConnection();
@@ -195,6 +200,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                     connAck.setSessionPresent(false);
                     try {
                         session.handleConnectMessage(connect);
+                        this.consumer = localServerEB.consumer(clientID, this);
                         connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
                         sendMessageToClient(connAck);
                         startKeepAliveTimer(connect.getKeepAlive());
@@ -203,6 +209,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
                         logger.warn("session failed to process CONNECT because " + e.getMessage());
                         clean();
                     }
+                    });
             }
             break;
             case SUBSCRIBE:
@@ -362,4 +369,20 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener {
         keepAliveTimeEnded = false;
     }
 
+    @Override
+    public void handle(Message<Buffer> ebMsg) {
+        try {
+            AbstractMessage msg = this.decoder.dec(ebMsg.body());
+            switch (msg.getMessageType()) {
+                case DISCONNECT:
+                    closeConnection();
+                    break;
+                case PUBLISH:
+                    session.handlePublishMessage((PublishMessage)msg);
+                    break;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }
