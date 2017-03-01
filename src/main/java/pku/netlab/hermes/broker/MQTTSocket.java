@@ -357,6 +357,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
             if (!removed) {
                 logger.warn("keep-alive cancel old timer not removed ID: " + keepAliveTimerID + " " + getClientInfo());
             }
+            keepAliveTimerID = -1;
         } catch(Throwable e) {
             logger.error("Cannot stop keep-alive timer with ID: "+keepAliveTimerID +" "+ getClientInfo(), e);
         }
@@ -376,6 +377,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
             switch (msg.getMessageType()) {
                 case DISCONNECT:
                     closeConnection();
+                    ebMsg.reply("true");
                     break;
                 case PUBLISH:
                     session.handlePublishMessage((PublishMessage)msg);

@@ -10,6 +10,7 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.spi.cluster.zookeeper.ZookeeperClusterManager;
 import org.dna.mqtt.moquette.proto.messages.AbstractMessage;
+import org.dna.mqtt.moquette.proto.messages.DisconnectMessage;
 import org.dna.mqtt.moquette.proto.messages.PublishMessage;
 import pku.netlab.hermes.ClusterCommunicator;
 import pku.netlab.hermes.broker.Impl.KafkaMQ;
@@ -134,7 +135,21 @@ public class CoreProcessor {
     void clientLogin(String clientID, Handler<AsyncResult<Void>> handler){
         //keep track of which
         //localEB.send(clientID, new DisconnectMessage());
-        sessionStore.addClient(brokerID, clientID, handler);
+        sessionStore.brokerOfClient(clientID, get-> {
+            if (brokerID.equals(get.result())) {
+                try {
+                    localEB.send(clientID, encoder.enc(new DisconnectMessage()), rep-> {
+                        if (rep.succeeded()) {
+                            sessionStore.addClient(brokerID, clientID, handler);
+                        }
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } else {
+                sessionStore.addClient(brokerID, clientID, handler);
+            }
+        });
     };
 
     void clientLogout(String clientID){
