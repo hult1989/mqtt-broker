@@ -15,6 +15,8 @@
  */
 package org.dna.mqtt.moquette.proto.messages;
 
+import io.vertx.core.json.JsonObject;
+
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 
@@ -73,5 +75,18 @@ public class PublishMessage extends MessageIDMessage {
     @Override
     public String toString() {
         return "PUBLISH: "+getMessageID() +" topic["+getTopicName()+"] payload length["+getPayload().array().length+"] qos["+getQos()+"] retain["+isRetainFlag()+"] dup["+isDupFlag()+"]";
+    }
+
+    public PublishMessage(String strPub) throws Exception{
+        this(new JsonObject(strPub));
+    }
+
+    public PublishMessage(JsonObject jsonPub) throws Exception{
+        this();
+        if (jsonPub == null) throw new Exception("message should not be null nor empty");
+        setPayload(jsonPub.getString("payload"));
+        setTopicName(jsonPub.getString("topic", ""));
+        setQos(QOSType.LEAST_ONE);
+        setMessageID(jsonPub.getInteger("id", 1));
     }
 }

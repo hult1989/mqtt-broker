@@ -26,7 +26,6 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
 
     private Vertx vertx;
     private MQTTSession session;
-    private String remoteAddr;
     private CoreProcessor m_processor;
     private EventBus localServerEB;
 
@@ -123,9 +122,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
     public void onError(Throwable e) {
         String clientInfo = getClientInfo();
         logger.error(clientInfo +", "+ e.getMessage(), e);
-//        if(e instanceof CorruptedFrameException) {
             closeConnection();
-//        }
     }
 
     private void onMessageFromClient(AbstractMessage msg) throws Exception {
@@ -133,17 +130,11 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
         switch (msg.getMessageType()) {
             case CONNECT:
 
-                /*
-                需要处理的情况包括，一个client在同一条链路上发来了多个connect消息，这时需要忽略掉后面的connect
-                一个client在一条新的链路上发来了connect消息，这是需要关闭掉前一个链接，清除前一个session，然后重新简历session
-                前后两种情况的区别是，两次消息的来源是否是同一条tcp链路
-                让每个socket都在eventBus上监听remote address 的地址，方便接受踢下线的消息
-                 */
                 ConnectMessage connect = (ConnectMessage)msg;
                 ConnAckMessage connAck = new ConnAckMessage();
                 if (session != null) {
-                    logger.warn(String.format("duplicate CONNECT from %s at %s\n", connect.getClientID(), this.remoteAddr));
-                    //这里是处理同一个连接上发来了多个CONNECT请求的情况，但是目前还没有处
+                    logger.warn(String.format("duplicate CONNECT from an existing session %s at %s\n",
+                            connect.getClientID(), netSocket.remoteAddress()));
                     /*
                      The Server MUST process a second CONNECT Packet sent from a Client as a protocol violation and disconnect the Client
                       */
@@ -186,30 +177,40 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
                     this.session = new MQTTSession(this, m_processor);
                     this.session.setPublishMessageHandler(this::sendMessageToClient);
 
-                    m_processor.clientLogin(clientID, aVoid->{
+                    m_processor.clientLogin(clientID, aVoid-> {
+                        if (aVoid.succeeded()) {
+                            setKeepAliveErrorHandler(cinfo -> {
+                                if (session != null) {
+                                    cinfo = session.getClientID();
+                                }
+                                logger.warn("keep alive exhausted! closing connection for client[" + cinfo + "] ...");
+                                closeConnection();
+                            });
 
-
-                    setKeepAliveErrorHandler(cinfo -> {
-                        if (session != null) {
-                            cinfo = session.getClientID();
+                            connAck.setSessionPresent(false);
+                            try {
+                                session.handleConnectMessage(connect);
+                                this.consumer = localServerEB.consumer(clientID, this);
+                                connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
+                                sendMessageToClient(connAck);
+                                startKeepAliveTimer(connect.getKeepAlive());
+                                m_processor.getPendingMessages(clientID, lists -> {
+                                    logger.info("try to get pending messages for " + clientID);
+                                    for (PublishMessageWithKey pub : lists) {
+                                        pub.setTopicName(clientID);
+                                        session.handlePublishMessageWithKey(pub);
+                                    }
+                                });
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                logger.warn("session failed to process CONNECT because " + e.getMessage());
+                                clean();
+                            }
+                        } else {
+                            logger.info("failed to write to Redis");
+                            closeConnection();
                         }
-                        logger.warn("keep alive exhausted! closing connection for client[" + cinfo + "] ...");
-                        closeConnection();
-                    });
-
-                    connAck.setSessionPresent(false);
-                    try {
-                        session.handleConnectMessage(connect);
-                        this.consumer = localServerEB.consumer(clientID, this);
-                        connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
-                        sendMessageToClient(connAck);
-                        startKeepAliveTimer(connect.getKeepAlive());
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        logger.warn("session failed to process CONNECT because " + e.getMessage());
-                        clean();
-                    }
-                    });
+                });
             }
             break;
             case SUBSCRIBE:
@@ -374,6 +375,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
     public void handle(Message<Buffer> ebMsg) {
         try {
             AbstractMessage msg = this.decoder.dec(ebMsg.body());
+            logger.info("from internal publish: " + msg);
             switch (msg.getMessageType()) {
                 case DISCONNECT:
                     closeConnection();
@@ -386,5 +388,10 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    @Override
+    public String toString() {
+        return String.format(netSocket.remoteAddress() + "<=>" + netSocket.localAddress());
     }
 }

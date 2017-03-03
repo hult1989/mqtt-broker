@@ -7,7 +7,11 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.redis.RedisClient;
 import io.vertx.redis.RedisOptions;
+import org.dna.mqtt.moquette.proto.messages.PublishMessageWithKey;
 import pku.netlab.hermes.broker.ISessionStore;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Created by hult on 1/13/17.
@@ -73,6 +77,52 @@ public class RedisSessionStore implements ISessionStore{
     @Override
     public void getAllMembers(String brokerID, Handler<AsyncResult<JsonArray>> handler) {
         this.redisClient.smembers(brokerID, handler);
+    }
+
+    @Override
+    public void pendingMessages(String clientID, Handler<List<PublishMessageWithKey>> handler) {
+        String pendingListName = setName(clientID);
+        this.redisClient.smembers(pendingListName, smem-> {
+            if (smem.succeeded()) {
+                List<String> keys = smem.result().getList();
+                this.redisClient.mgetMany(keys, mget-> {
+                    if (mget.succeeded()) {
+                        List<String> messages = mget.result().getList();
+                        List<PublishMessageWithKey> pubList = new ArrayList<>();
+                        List<String> toRem = new ArrayList<>();
+                        for (int i = 0; i < messages.size(); i += 1) {
+                            String strPbu = messages.get(i);
+                            String key = keys.get(i);
+                            try {
+                                PublishMessageWithKey pub = new PublishMessageWithKey(strPbu, key);
+                                pubList.add(pub);
+                            } catch (Exception e) {
+                                toRem.add(key);
+                                logger.warn("fail to decode: " + strPbu);
+                            }
+                        }
+                        handler.handle(pubList);
+                        this.redisClient.sremMany(pendingListName, toRem, aVoid->{});
+                        this.redisClient.delMany(toRem, aVoid-> {});
+                    }
+                });
+            }
+        });
+    }
+
+    @Override
+    public void removePendingMessage(String key, String clientID) {
+        this.removeMessage(key);
+        this.redisClient.srem(setName(clientID), key, aVoid->{});
+    }
+
+    @Override
+    public void removeMessage(String key) {
+        this.redisClient.del(key, aVoid -> {});
+    }
+
+    private String setName(String clientID) {
+        return "pending:" + clientID;
     }
 }
 

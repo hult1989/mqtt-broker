@@ -36,7 +36,7 @@ def read2q(client):
             if line.find('exit') != -1:
                 os._exit(1)
             elif line.find('connect') != -1:
-                client.connect(host, 1883, 4)
+                client.connect(host, 1883, 0)
             elif line[0] not in {'p', 's'}:
                 print 'Invalid Input'
             else:
@@ -53,7 +53,7 @@ def on_message(client, userdata, msg):
 
 def init_client(host):
     #userId = str(randint(10000, 100000))
-    userId = 'hult'
+    userId = 'alice'
     client = mqtt.Client(client_id=userId, clean_session=True)
     client.userId = userId
     client.on_connect = on_connect

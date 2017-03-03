@@ -24,7 +24,7 @@ public class MQTTSession {
     private Handler<PublishMessage> publishMessageHandler;
     private CoreProcessor m_processor;
     private int msgID;
-    private HashMap<Integer, PublishMessage> inFlightMsgs;
+    private HashMap<Integer, String> inFlightMsgs;
 
 
     public MQTTSession(MQTTSocket socket, CoreProcessor processor) {
@@ -48,7 +48,8 @@ public class MQTTSession {
     }
 
     private void inFlightAcknowledged(int messageID) {
-        inFlightMsgs.remove(msgID);
+        String key = inFlightMsgs.remove(msgID);
+        m_processor.delMessage(key, clientID);
     }
 
 
@@ -65,7 +66,7 @@ public class MQTTSession {
             logger.info("cleanSession=false: restore old session state with subscriptions ...");
         } else {
         }
-        logger.info("New connection client : " + getClientInfo());
+        logger.info(this.toString());
     }
 
 
@@ -85,9 +86,13 @@ public class MQTTSession {
         QOSType originalQos = publishMessage.getQos();
         if (originalQos == QOSType.LEAST_ONE) {
             publishMessage.setMessageID(nextMessageID());
-            inFlightMsgs.put(publishMessage.getMessageID(), publishMessage);
         }
         sendPublishMessage(publishMessage);
+    }
+
+    public  void handlePublishMessageWithKey(PublishMessageWithKey pub) {
+        this.handlePublishMessage(pub);
+        inFlightMsgs.put(pub.getMessageID(), pub.getGlobalKey());
     }
 
     private List<Subscription> getAllMatchingSubscriptions(String topic) {
@@ -138,8 +143,6 @@ public class MQTTSession {
         return clientID;
     }
 
-    public void handlePushAck(PubAckMessage puback) {
-    }
 
     /*
     public void handleArchiveMsg() {
@@ -200,7 +203,7 @@ public class MQTTSession {
 
     @Override
     public String toString() {
-        return String.format("clientID: %s, state: %s", clientID, "SESSION");
+        return String.format("[%s] at [%s]", clientID, clientSocket.toString());
     }
 }
 

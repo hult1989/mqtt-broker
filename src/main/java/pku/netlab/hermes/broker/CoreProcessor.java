@@ -8,18 +8,19 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import io.vertx.core.shareddata.LocalMap;
 import io.vertx.spi.cluster.zookeeper.ZookeeperClusterManager;
 import org.dna.mqtt.moquette.proto.messages.AbstractMessage;
 import org.dna.mqtt.moquette.proto.messages.DisconnectMessage;
 import org.dna.mqtt.moquette.proto.messages.PublishMessage;
+import org.dna.mqtt.moquette.proto.messages.PublishMessageWithKey;
 import pku.netlab.hermes.ClusterCommunicator;
 import pku.netlab.hermes.broker.Impl.KafkaMQ;
 import pku.netlab.hermes.broker.Impl.RedisSessionStore;
 import pku.netlab.hermes.parser.MQTTEncoder;
 
 import java.util.ArrayList;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.List;
 
 /**
  * Created by hult on 2/10/17.
@@ -32,7 +33,7 @@ public class CoreProcessor {
     private final EventBus localEB;
     private ISessionStore sessionStore;
     private IMessageQueue messageQueue;
-    private ConcurrentMap<String, MQTTSession> sessionLocalMap;
+    private LocalMap<String, String> sessionLocalMap;
     private ArrayList<MQTTBroker> brokerList;
     private MQTTEncoder encoder;
 
@@ -48,7 +49,7 @@ public class CoreProcessor {
     public void deployManyVerticles() {
         messageQueue = deployKafka();
         sessionStore = deploySessionStore();
-        sessionLocalMap = new ConcurrentHashMap<>();
+        sessionLocalMap = brokerVertx.sharedData().getLocalMap("SESSION_LOCAL_MAP");
         deployStateServer();
         deployBrokers();
         deployClusterCommunicator();
@@ -137,20 +138,23 @@ public class CoreProcessor {
         //localEB.send(clientID, new DisconnectMessage());
         sessionStore.brokerOfClient(clientID, get-> {
             if (brokerID.equals(get.result())) {
-                try {
-                    localEB.send(clientID, encoder.enc(new DisconnectMessage()), rep-> {
-                        if (rep.succeeded()) {
-                            sessionStore.addClient(brokerID, clientID, handler);
+                if (sessionLocalMap.get(clientID) != null) {
+                    logger.info(clientID + " login from a new TCP connection");
+                    try {
+                        localEB.publish(clientID, encoder.enc(new DisconnectMessage()));
+                        } catch(Exception e){
+                            e.printStackTrace();
                         }
-                    });
-                } catch (Exception e) {
-                    e.printStackTrace();
+                } else {
+                    sessionLocalMap.put(clientID, brokerID);
                 }
+                sessionStore.addClient(brokerID, clientID, handler);
             } else {
+                //need broadcast clientID among cluster, let disconnect this Client from another broker
                 sessionStore.addClient(brokerID, clientID, handler);
             }
         });
-    };
+    }
 
     void clientLogout(String clientID){
         //sessionLocalMap.remove(clientID);
@@ -159,9 +163,15 @@ public class CoreProcessor {
 
     void storeMessage(){};
 
-    void delMessage(){};
+    void delMessage(String key, String clientID) {
+        sessionStore.removePendingMessage(key, clientID);
+    }
 
-    MQTTSession getClientSession(String clientID){
+    void delMessage(String key){
+        sessionStore.removeMessage(key);
+    };
+
+    String getClientSession(String clientID){
         return sessionLocalMap.get(clientID);
     }
 
@@ -191,6 +201,10 @@ public class CoreProcessor {
 
     void enqueKafka(PublishMessage publishMessage) {
         messageQueue.enQueue(publishMessage);
+    }
+
+    void getPendingMessages(String clientID, Handler<List<PublishMessageWithKey>> handler) {
+        sessionStore.pendingMessages(clientID, handler);
     }
 
 }
