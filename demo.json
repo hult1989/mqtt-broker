@@ -29,7 +29,7 @@
     "producer": {
       "serializer.class": "org.apache.kafka.common.serialization.StringSerializer",
       "bootstrap.servers": "server:9092",
-      "default_topic": "PUBLISH"
+      "default_topic": "EVENT"
     }
   },
 

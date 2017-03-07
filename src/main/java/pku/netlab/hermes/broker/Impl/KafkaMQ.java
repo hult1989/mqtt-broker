@@ -20,6 +20,7 @@ import pku.netlab.hermes.broker.IMessageQueue;
 public class KafkaMQ implements IMessageQueue{
     private Handler<JsonObject> consumer;
     private KafkaPublisher publisher;
+    private final String DEFAULT_TOPIC;
     private Logger logger = LoggerFactory.getLogger(KafkaMQ.class);
 
     public KafkaMQ(Vertx vertx, JsonObject kafkaConfig, Handler<JsonObject> handler) {
@@ -30,13 +31,14 @@ public class KafkaMQ implements IMessageQueue{
         deployConsumer(vertx, consumerConf, handler);
 
         JsonObject producerConf = kafkaConfig.getJsonObject("producer");
+        this.DEFAULT_TOPIC = producerConf.getString("default_topic");
         deployProducer(vertx, producerConf);
         logger.info("kafka deployed at " + Thread.currentThread().getName());
      }
 
     @Override
     public void enQueue(PublishMessage message) {
-        publisher.send("EVENT", message.toString());
+        publisher.send(DEFAULT_TOPIC, message.getPayloadAsString());
     }
 
     private void deployProducer(Vertx vertx, JsonObject producerConf) {
@@ -46,9 +48,6 @@ public class KafkaMQ implements IMessageQueue{
                 System.exit(0);
             } else {
                 this.publisher = new KafkaPublisher(vertx.eventBus());
-                vertx.setPeriodic(2_000, id-> {
-                    publisher.send("PUBLISH", "" + System.currentTimeMillis());
-                });
             }
         });
     }

@@ -1,5 +1,6 @@
 package pku.netlab.hermes.broker.Impl;
 
+/**
 import io.vertx.core.*;
 import io.vertx.core.json.JsonObject;
 import org.apache.hadoop.conf.Configuration;
@@ -21,9 +22,6 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
-/**
- * Created by hult on 3/1/17.
- */
 public class HBaseStore extends AbstractVerticle implements IMessageStore {
     private JsonObject config;
     private Connection connection;
@@ -136,6 +134,6 @@ public class HBaseStore extends AbstractVerticle implements IMessageStore {
         long end = System.currentTimeMillis();
         System.out.println(end);
         System.out.println(end - start);
-        */
     }
 }
+ */

@@ -51,12 +51,12 @@
             <artifactId>vertx-kafka</artifactId>
             <version>0.4.1</version>
             <scope>${vertx.scope}</scope>
-            <exclusions>
+            <!--exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
                     <artifactId>log4j-over-slf4j</artifactId>
                 </exclusion>
-            </exclusions>
+            </exclusions-->
         </dependency>
         <dependency>
             <groupId>commons-io</groupId>
@@ -64,11 +64,11 @@
             <version>2.4</version>
             <scope>${vertx.scope}</scope>
         </dependency>
-        <dependency>
+        <!--dependency>
             <groupId>org.apache.hbase</groupId>
             <artifactId>hbase-client</artifactId>
             <version>1.3.0</version>
-        </dependency>
+        </dependency-->
 
 
 

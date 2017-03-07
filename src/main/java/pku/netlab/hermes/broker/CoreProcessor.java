@@ -24,8 +24,10 @@ import java.util.List;
 
 /**
  * Created by hult on 2/10/17.
+ * All methods of this class should be thread safe, since they will be called from different threads.
  */
 public class CoreProcessor {
+
     private final String brokerID;
     private final Vertx brokerVertx;
     private final Logger logger = LoggerFactory.getLogger(CoreProcessor.class);
@@ -133,7 +135,7 @@ public class CoreProcessor {
     }
 
 
-    void clientLogin(String clientID, Handler<AsyncResult<Void>> handler){
+    public void clientLogin(String clientID, Handler<AsyncResult<Void>> handler){
         //keep track of which
         //localEB.send(clientID, new DisconnectMessage());
         sessionStore.brokerOfClient(clientID, get-> {
@@ -156,28 +158,28 @@ public class CoreProcessor {
         });
     }
 
-    void clientLogout(String clientID){
+    public void clientLogout(String clientID){
         //sessionLocalMap.remove(clientID);
         sessionStore.removeClient(brokerID, clientID, aVoid->{});
     };
 
-    void storeMessage(){};
+    public void storeMessage(){};
 
-    void delMessage(String key, String clientID) {
+    public void delMessage(String key, String clientID) {
         sessionStore.removePendingMessage(key, clientID);
     }
 
-    void delMessage(String key){
+    public void delMessage(String key){
         sessionStore.removeMessage(key);
     };
 
-    String getClientSession(String clientID){
+    public String getClientSession(String clientID){
         return sessionLocalMap.get(clientID);
     }
 
     void updateClientStatus(){}
 
-    void handleMsgFromMQ(JsonObject msg){
+    public void handleMsgFromMQ(JsonObject msg){
         JsonObject value = new JsonObject(msg.getString("value"));
         try {
             JsonArray targets = value.getJsonArray("targets");
@@ -195,15 +197,15 @@ public class CoreProcessor {
         }
     }
 
-    void saveSubscription(){};
+    public void saveSubscription(){};
 
-    void delSubscription(){};
+    public void delSubscription(){};
 
-    void enqueKafka(PublishMessage publishMessage) {
+    public void enqueKafka(PublishMessage publishMessage) {
         messageQueue.enQueue(publishMessage);
     }
 
-    void getPendingMessages(String clientID, Handler<List<PublishMessageWithKey>> handler) {
+    public void getPendingMessages(String clientID, Handler<List<PublishMessageWithKey>> handler) {
         sessionStore.pendingMessages(clientID, handler);
     }
 
