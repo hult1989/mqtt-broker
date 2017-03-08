@@ -4,7 +4,6 @@ import io.vertx.core.*;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -17,6 +16,7 @@ import org.dna.mqtt.moquette.proto.messages.PublishMessageWithKey;
 import pku.netlab.hermes.ClusterCommunicator;
 import pku.netlab.hermes.broker.Impl.KafkaMQ;
 import pku.netlab.hermes.broker.Impl.RedisSessionStore;
+import pku.netlab.hermes.message.PendingMessage;
 import pku.netlab.hermes.parser.MQTTEncoder;
 
 import java.util.ArrayList;
@@ -182,15 +182,16 @@ public class CoreProcessor {
     public void handleMsgFromMQ(JsonObject msg){
         JsonObject value = new JsonObject(msg.getString("value"));
         try {
-            JsonArray targets = value.getJsonArray("targets");
-            PublishMessage publishMessage = new PublishMessage();
-            publishMessage.setPayload(value.getString("msg"));
-            publishMessage.setQos(AbstractMessage.QOSType.LEAST_ONE);
-            publishMessage.setMessageID((int)System.currentTimeMillis() % 65536);
-            for (Object o: targets.getList()) {
+            PendingMessage pending = new PendingMessage(value);
+            PublishMessage publish = new PublishMessage();
+            publish.setPayload(pending.msg);
+            publish.setQos(AbstractMessage.QOSType.LEAST_ONE);
+            //a random message id is OK since it will be rewritten in MQTTSession
+            publish.setMessageID((int)System.currentTimeMillis() % 65536);
+            for (Object o: pending.targets) {
                 String client = (String) o;
-                publishMessage.setTopicName(client);
-                localEB.send(client, encoder.enc(publishMessage));
+                publish.setTopicName(client);
+                localEB.send(client, encoder.enc(publish));
             }
         } catch (Exception e) {
             logger.error(e.getMessage());
