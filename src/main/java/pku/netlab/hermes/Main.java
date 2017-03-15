@@ -61,8 +61,7 @@ public class Main {
                 JsonObject config = new JsonObject(json);
 
                 CoreProcessor processor = new CoreProcessor(config);
-                processor.deployManyVerticles();
-
+                processor.start();
             } catch(IOException e) {
                 logger.fatal(e.getMessage(),e);
                 System.exit(0);

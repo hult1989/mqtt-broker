@@ -33,7 +33,8 @@ public class KafkaMQ implements IMessageQueue{
         JsonObject producerConf = kafkaConfig.getJsonObject("producer");
         this.DEFAULT_TOPIC = producerConf.getString("default_topic");
         deployProducer(vertx, producerConf);
-        logger.info("kafka deployed at " + Thread.currentThread().getName());
+        logger.info(String.format("kafka deployed at %s with TOPIC %s",
+                Thread.currentThread().getName(), consumerConf.getJsonArray("topics")));
      }
 
     @Override
@@ -64,5 +65,9 @@ public class KafkaMQ implements IMessageQueue{
                 });
             }
         });
+    }
+
+    protected void publish(String topic, String pendingMessage) {
+        this.publisher.send(topic, pendingMessage);
     }
 }

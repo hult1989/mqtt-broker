@@ -8,8 +8,8 @@
 
   "zookeepers": {
     "zookeeperHosts": "server",
-	"sessionTimeout": 10000,
-	"connectTimeout": 3000,
+	"sessionTimeout": 2000,
+	"connectTimeout": 2000,
 	"rootPath": "hermes",
 	"retry": {
 		"initialSleepTime": 100,

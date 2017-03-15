@@ -22,7 +22,7 @@ public class PendingMessage {
     }
 
     public JsonObject toJson() {
-        return new JsonObject().put("msg", msg).put("target", targets);
+        return new JsonObject().put("msg", msg).put("targets", targets);
     }
 
     @Override

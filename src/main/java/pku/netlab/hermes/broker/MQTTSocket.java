@@ -191,6 +191,13 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
                             try {
                                 session.handleConnectMessage(connect);
                                 this.consumer = localServerEB.consumer(clientID, this);
+                                this.consumer.completionHandler(reg-> {
+                                    if (reg.succeeded()) {
+                                        logger.info(clientID + " registered to localEB");
+                                    } else {
+                                        logger.error(clientID + " failed to register to localEB");
+                                    }
+                                });
                                 connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
                                 sendMessageToClient(connAck);
                                 startKeepAliveTimer(connect.getKeepAlive());

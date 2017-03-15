@@ -14,7 +14,7 @@ import java.util.HashMap;
 
 
 public class MQTTBroker extends AbstractVerticle {
-    public final CoreProcessor processor;
+    private final CoreProcessor processor;
     private HashMap<String, MQTTSession> threadLocalSessionMap;
     private Logger logger = LoggerFactory.getLogger(MQTTBroker.class);
     private Context threadLocalContext;

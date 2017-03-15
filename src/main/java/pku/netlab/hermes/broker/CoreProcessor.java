@@ -28,33 +28,50 @@ import java.util.List;
  */
 public class CoreProcessor {
 
-    private final String brokerID;
     private final Vertx brokerVertx;
     private final Logger logger = LoggerFactory.getLogger(CoreProcessor.class);
     private final JsonObject config;
-    private final EventBus localEB;
+    private final EventBus brokerEB;
+    private ClusterCommunicator clusterCommunicator;
     private ISessionStore sessionStore;
     private IMessageQueue messageQueue;
     private LocalMap<String, String> sessionLocalMap;
     private ArrayList<MQTTBroker> brokerList;
     private MQTTEncoder encoder;
+    private String brokerID;
 
     public CoreProcessor(JsonObject config) {
         this.brokerVertx = Vertx.vertx();
         this.config = config;
         this.brokerID = config.getJsonObject("broker").getString("broker_id");
         this.brokerList = new ArrayList<>(Runtime.getRuntime().availableProcessors());
-        this.localEB = brokerVertx.eventBus();
+        this.brokerEB = brokerVertx.eventBus();
         this.encoder = new MQTTEncoder();
+        deployClusterCommunicator();
     }
 
-    public void deployManyVerticles() {
+    public void start() {
+        if (this.brokerID.equals("standby")) {
+            logger.info("This is a standby broker, waiting...");
+        } else {
+            deployManyVerticles();
+        }
+    }
+
+    private void deployManyVerticles() {
         messageQueue = deployKafka();
         sessionStore = deploySessionStore();
         sessionLocalMap = brokerVertx.sharedData().getLocalMap("SESSION_LOCAL_MAP");
         deployStateServer();
         deployBrokers();
-        deployClusterCommunicator();
+    }
+
+    public String getBrokerID() {
+        return this.brokerID;
+    }
+
+    public void updateBrokerID(String id) {
+        this.brokerID = id;
     }
 
     private ISessionStore deploySessionStore() {
@@ -66,7 +83,7 @@ public class CoreProcessor {
         //create this vertx so that it can be isolated from clustered-eventbus
         Vertx kafkaVertx = Vertx.vertx();
         JsonObject kafkaConfig = config.getJsonObject("kafka");
-        kafkaConfig.put("brokerID", config.getJsonObject("broker").getString("broker_id"));
+        kafkaConfig.put("brokerID", this.brokerID);
         return new KafkaMQ(kafkaVertx, kafkaConfig, this::handleMsgFromMQ);
     }
 
@@ -119,7 +136,7 @@ public class CoreProcessor {
         Vertx.clusteredVertx(options, res-> {
             if (res.succeeded()) {
                 Vertx clusterVertx = res.result();
-                ClusterCommunicator clusterCommunicator = new ClusterCommunicator(manager, this);
+                this.clusterCommunicator = new ClusterCommunicator(manager, this);
                 clusterVertx.deployVerticle(clusterCommunicator, dep-> {
                     if (dep.failed()) {
                         logger.error("fail to cluster communicator: " + dep.cause().getMessage());
@@ -137,13 +154,13 @@ public class CoreProcessor {
 
     public void clientLogin(String clientID, Handler<AsyncResult<Void>> handler){
         //keep track of which
-        //localEB.send(clientID, new DisconnectMessage());
+        //brokerEB.send(clientID, new DisconnectMessage());
         sessionStore.brokerOfClient(clientID, get-> {
             if (brokerID.equals(get.result())) {
                 if (sessionLocalMap.get(clientID) != null) {
                     logger.info(clientID + " login from a new TCP connection");
                     try {
-                        localEB.publish(clientID, encoder.enc(new DisconnectMessage()));
+                        brokerEB.publish(clientID, encoder.enc(new DisconnectMessage()));
                         } catch(Exception e){
                             e.printStackTrace();
                         }
@@ -153,13 +170,14 @@ public class CoreProcessor {
                 sessionStore.addClient(brokerID, clientID, handler);
             } else {
                 //need broadcast clientID among cluster, let disconnect this Client from another broker
+                sessionLocalMap.put(clientID, brokerID);
                 sessionStore.addClient(brokerID, clientID, handler);
             }
         });
     }
 
     public void clientLogout(String clientID){
-        //sessionLocalMap.remove(clientID);
+        sessionLocalMap.remove(clientID);
         sessionStore.removeClient(brokerID, clientID, aVoid->{});
     };
 
@@ -183,6 +201,7 @@ public class CoreProcessor {
         JsonObject value = new JsonObject(msg.getString("value"));
         try {
             PendingMessage pending = new PendingMessage(value);
+            logger.info("pending message: " + pending);
             PublishMessage publish = new PublishMessage();
             publish.setPayload(pending.msg);
             publish.setQos(AbstractMessage.QOSType.LEAST_ONE);
@@ -190,8 +209,11 @@ public class CoreProcessor {
             publish.setMessageID((int)System.currentTimeMillis() % 65536);
             for (Object o: pending.targets) {
                 String client = (String) o;
+                if (sessionLocalMap.get(client) == null) {
+                    logger.error("cannot find " + client + " in sessionLocalMap");
+                }
                 publish.setTopicName(client);
-                localEB.send(client, encoder.enc(publish));
+                brokerEB.send(client, encoder.enc(publish));
             }
         } catch (Exception e) {
             logger.error(e.getMessage());
