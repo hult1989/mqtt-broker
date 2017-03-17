@@ -30,8 +30,8 @@ public class MQTTBroker extends AbstractVerticle {
             this.threadLocalContext = vertx.getOrCreateContext();
             JsonObject brokerConf = config();
             startTcpServer(brokerConf);
-            logger.info(String.format("Start Broker ==> [port: %d] [socket_idle_timeout: %d] [%s]",
-                    brokerConf.getInteger("tcp_port"), brokerConf.getInteger("socket_idle_timeout"), Thread.currentThread().getName()));
+            logger.info(String.format("Start Broker ==> [host: %s] [port: %d] [socket_idle_timeout: %d] [%s]",
+                   brokerConf.getString("ip"),  brokerConf.getInteger("tcp_port"), brokerConf.getInteger("socket_idle_timeout"), Thread.currentThread().getName()));
 
         } catch(Exception e ) {
             logger.error(e.getMessage(), e);
@@ -50,6 +50,9 @@ public class MQTTBroker extends AbstractVerticle {
                 .setIdleTimeout(idleTimeout) // in seconds; 0 means "don't timeout".
                 .setReceiveBufferSize(4096)
                 .setSendBufferSize(4096)
+                .setReuseAddress(true)
+                .setHost(processor.getHost())
+                .setTcpNoDelay(true)
                 .setPort(port);
 
         NetServer netServer = vertx.createNetServer(opt);

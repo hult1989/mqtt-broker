@@ -3,7 +3,8 @@
       "tcp_port": 1883,
       "socket_idle_timeout": 600,
       "message_store": "DB",
-      "broker_id": "broker-001"
+      "ip": "219.223.199.248",
+      "broker_id": "standby"
     },
 
   "zookeepers": {

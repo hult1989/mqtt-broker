@@ -4,6 +4,7 @@ import io.vertx.core.*;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -39,11 +40,13 @@ public class CoreProcessor {
     private ArrayList<MQTTBroker> brokerList;
     private MQTTEncoder encoder;
     private String brokerID;
+    private String ipAddress;
 
     public CoreProcessor(JsonObject config) {
         this.brokerVertx = Vertx.vertx();
         this.config = config;
         this.brokerID = config.getJsonObject("broker").getString("broker_id");
+        this.ipAddress = config.getJsonObject("broker").getString("ip");
         this.brokerList = new ArrayList<>(Runtime.getRuntime().availableProcessors());
         this.brokerEB = brokerVertx.eventBus();
         this.encoder = new MQTTEncoder();
@@ -74,6 +77,10 @@ public class CoreProcessor {
         this.brokerID = id;
     }
 
+    public String getHost() {
+        return this.ipAddress;
+    }
+
     private ISessionStore deploySessionStore() {
         Vertx redisVertx = Vertx.vertx();
         return new RedisSessionStore(redisVertx, config.getJsonObject("redis"));
@@ -97,25 +104,31 @@ public class CoreProcessor {
     }
 
     private void deployStateServer() {
-        HttpServer server = Vertx.vertx().createHttpServer();
+        HttpServer server = Vertx.vertx().createHttpServer(new HttpServerOptions()
+                .setPort(8989).setTcpNoDelay(true).setTcpNoDelay(true).setHost(this.ipAddress));
+        logger.info("state server starts at: " + this.ipAddress);
         server.requestHandler(req-> {
             if (req.method() == HttpMethod.GET) {
-                this.sessionStore.getAllMembers(brokerID, res-> {
-                    if (!res.succeeded()) {
-                        logger.warn("failed to get all members from redis");
-                    }
-                    String ret = String.format("Redis: {%s}\nLocalMap: {%s}\n",
-                            res.result().toString(), sessionLocalMap.toString());
-                    req.response().end(ret);
-                });
+                if (req.path().contains("users")) {
+                    this.sessionStore.getAllMembers(brokerID, res -> {
+                        if (!res.succeeded()) {
+                            logger.warn("failed to get all members from redis");
+                        }
+                        String ret = String.format("Redis: {%s}\nLocalMap: {%s}\n",
+                                res.result().toString(), sessionLocalMap);
+                        req.response().end(ret);
+                    });
+                } else if (req.path().contains("brokers")) {
+                    req.response().end(this.clusterCommunicator.getBrokers());
+                }
             }
         });
-        server.listen(8989);
+        server.listen();
     }
 
     private void deployClusterCommunicator() {
         JsonObject zkConfig = config.getJsonObject("zookeepers");
-        /**
+        /*
         CuratorFramework curator = CuratorFrameworkFactory.builder()
                 .connectString(zkConfig.getString("zookeeperHosts"))
                 .namespace(zkConfig.getString("rootPath", "io.vertx"))
@@ -131,7 +144,7 @@ public class CoreProcessor {
         */
 
         ZookeeperClusterManager manager = new ZookeeperClusterManager(zkConfig);
-        VertxOptions options = new VertxOptions().setClusterManager(manager);
+        VertxOptions options = new VertxOptions().setClusterManager(manager).setClusterHost(this.ipAddress);
 
         Vertx.clusteredVertx(options, res-> {
             if (res.succeeded()) {

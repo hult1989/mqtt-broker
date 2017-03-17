@@ -7,6 +7,7 @@ import io.vertx.core.spi.cluster.NodeListener;
 import io.vertx.spi.cluster.zookeeper.ZookeeperClusterManager;
 import pku.netlab.hermes.broker.CoreProcessor;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -42,7 +43,7 @@ public class ClusterCommunicator extends AbstractVerticle {
         String IDofCrashedBroker = map.remove(nodeID);
         processor.updateBrokerID(IDofCrashedBroker);
         map.put(manager.getNodeID(), IDofCrashedBroker);
-        map.put(processor.getBrokerID(), manager.getNodeID());
+        map.put(processor.getBrokerID(), processor.getHost());
         processor.start();
     }
 
@@ -52,6 +53,16 @@ public class ClusterCommunicator extends AbstractVerticle {
         logger.info("working nodes: " + String.valueOf(manager.getNodes()));
         this.map = manager.getSyncMap("brokers");
         map.put(manager.getNodeID(), processor.getBrokerID());
-        map.put(processor.getBrokerID(), manager.getNodeID());
+        map.put(processor.getBrokerID(), processor.getHost());
+    }
+
+    public String getBrokers() {
+        Map<String, String> ret = new HashMap<>();
+        for (String node : manager.getNodes()) {
+            String id = map.get(node);
+            String ip = map.get(id);
+            ret.put(ip, id + ": " + node);
+        }
+        return ret.toString();
     }
 }
