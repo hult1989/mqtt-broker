@@ -15,6 +15,8 @@ import pku.netlab.hermes.QOSUtils;
 import pku.netlab.hermes.parser.MQTTDecoder;
 import pku.netlab.hermes.parser.MQTTEncoder;
 
+import java.nio.ByteBuffer;
+
 import static org.dna.mqtt.moquette.proto.messages.AbstractMessage.*;
 
 /**
@@ -252,6 +254,8 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
             case PUBLISH:
                 resetKeepAliveTimer();
                 PublishMessage publish = (PublishMessage)msg;
+                ByteBuffer buffer = ((PublishMessage) msg).getPayload();
+                //logger.info(Event.fromByteBuffer(buffer).toString());
                 m_processor.enqueKafka(publish);
                 switch (publish.getQos()) {
                     case MOST_ONE:

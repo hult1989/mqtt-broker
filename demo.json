@@ -4,7 +4,7 @@
       "socket_idle_timeout": 600,
       "message_store": "DB",
       "ip": "219.223.199.248",
-      "broker_id": "standby"
+      "broker_id": "broker-001"
     },
 
   "zookeepers": {
