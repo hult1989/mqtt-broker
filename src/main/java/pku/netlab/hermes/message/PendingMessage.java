@@ -1,8 +1,10 @@
 package pku.netlab.hermes.message;
 
+import hermes.dataobj.Event;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -40,8 +42,12 @@ public class PendingMessage {
         list.add("alice");
         list.add("bob");
         list.add("cathy");
-        PendingMessage message = new PendingMessage("hello", list);
-        System.out.println(message);
+        String eventMsg = new Event(3, new int[]{3,2}).toASCIIString();
+        PendingMessage message = new PendingMessage(eventMsg, list);
+        JsonObject obj = message.toJson();
+        String decode = obj.getString("msg");
+        System.out.println(Event.fromASCIIString(decode));
+        ByteBuffer buffer = ByteBuffer.allocate(100);
     }
 
 }

@@ -20,8 +20,12 @@ import pku.netlab.hermes.broker.Impl.RedisSessionStore;
 import pku.netlab.hermes.message.PendingMessage;
 import pku.netlab.hermes.parser.MQTTEncoder;
 
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * Created by hult on 2/10/17.
@@ -42,11 +46,31 @@ public class CoreProcessor {
     private String brokerID;
     private String ipAddress;
 
+    private String getIpAddress(String networkID) {
+        Stream<String> ipStream = Stream.empty();
+        try {
+            Enumeration<NetworkInterface > enumeration = NetworkInterface.getNetworkInterfaces();
+            while (enumeration.hasMoreElements()) {
+                NetworkInterface ni = enumeration.nextElement();
+                ipStream = Stream.concat(ipStream, ni.getInterfaceAddresses().stream().map(ia -> ia.getAddress().getHostAddress()));
+            }
+        } catch (SocketException e) {
+            logger.error(e.getMessage());
+            System.exit(0);
+        }
+        String ret = ipStream.filter(ip -> ip.startsWith(networkID)).findFirst().get();
+        if (ret == null) {
+            logger.error("failed to find ip address starts with " + networkID);
+            System.exit(0);
+        }
+        return ret;
+    }
+
     public CoreProcessor(JsonObject config) {
         this.brokerVertx = Vertx.vertx();
         this.config = config;
-        this.brokerID = config.getJsonObject("broker").getString("broker_id");
-        this.ipAddress = config.getJsonObject("broker").getString("ip");
+        this.ipAddress = getIpAddress(config.getJsonObject("broker").getString("network_id"));
+        this.brokerID = config.getJsonObject("broker").getString("broker_prefix") + "_" + this.ipAddress;
         this.brokerList = new ArrayList<>(Runtime.getRuntime().availableProcessors());
         this.brokerEB = brokerVertx.eventBus();
         this.encoder = new MQTTEncoder();

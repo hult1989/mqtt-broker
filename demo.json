@@ -3,8 +3,8 @@
       "tcp_port": 1883,
       "socket_idle_timeout": 600,
       "message_store": "DB",
-      "ip": "219.223.199.248",
-      "broker_id": "broker-001"
+      "network_id": "219.223",
+      "broker_prefix": "broker" //or 'standby'
     },
 
   "zookeepers": {
@@ -23,7 +23,7 @@
     "consumer": {
       "zookeeper.connect": "server:2181",
       "group.id": "HermesKafka",
-      "consumer.poll.interval.ms": 500,
+      "consumer.poll.interval.ms": 200,
       "auto.offset.reset": "smallest",
       "bootstrap.servers": "server:9092"
     },
