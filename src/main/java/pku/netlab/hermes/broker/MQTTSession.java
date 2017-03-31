@@ -27,6 +27,7 @@ public class MQTTSession {
     private HashMap<Integer, String> inFlightMsgs;
 
 
+
     public MQTTSession(MQTTSocket socket, CoreProcessor processor) {
         this.clientSocket = socket;
         this.m_processor = processor;
@@ -82,13 +83,17 @@ public class MQTTSession {
     */
 
 
-    public  void handlePublishMessage(PublishMessage publishMessage) {
+    public  int handlePublishMessage(PublishMessage publishMessage) {
+        int id = 0;
         QOSType originalQos = publishMessage.getQos();
         if (originalQos == QOSType.LEAST_ONE) {
-            publishMessage.setMessageID(nextMessageID());
+            id = nextMessageID();
+            publishMessage.setMessageID(id);
         }
         sendPublishMessage(publishMessage);
+        return id;
     }
+
 
     public  void handlePublishMessageWithKey(PublishMessageWithKey pub) {
         this.handlePublishMessage(pub);
@@ -150,7 +155,7 @@ public class MQTTSession {
         redis.smembers("mq:" + this.clientID, smembers -> {
             if (smembers.failed()) {
                 smembers.cause().printStackTrace();
-                logger.warn(Arrays.toString(smembers.cause().getStackTrace()));
+//                logger.warn(Arrays.toString(smembers.cause().getStackTrace()));
             } else if (smembers.result().size() == 0) {
                 return;
             } else {

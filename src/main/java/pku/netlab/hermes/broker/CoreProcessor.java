@@ -1,6 +1,7 @@
 package pku.netlab.hermes.broker;
 
 import io.vertx.core.*;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
@@ -115,7 +116,7 @@ public class CoreProcessor {
         Vertx kafkaVertx = Vertx.vertx();
         JsonObject kafkaConfig = config.getJsonObject("kafka");
         kafkaConfig.put("brokerID", this.brokerID);
-        return new KafkaMQ(kafkaVertx, kafkaConfig, this::handleMsgFromMQ);
+        return new KafkaMQ(kafkaVertx, kafkaConfig, this::handleEventFromMQ);
     }
 
 
@@ -233,6 +234,16 @@ public class CoreProcessor {
     }
 
     void updateClientStatus(){}
+
+    //only for benchmark purpose
+    public void handleEventFromMQ(byte[] bytes) {
+        Buffer buffer = Buffer.buffer(bytes);
+        try {
+            brokerEB.send("BENCHMARK", buffer);
+        } catch (Exception e) {
+            logger.error(e.getMessage());
+        }
+    }
 
     public void handleMsgFromMQ(JsonObject msg){
         JsonObject value = new JsonObject(msg.getString("value"));

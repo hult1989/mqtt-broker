@@ -31,7 +31,7 @@ public class Router extends AbstractVerticle {
             Event e = Event.fromBytes(record.value());
             System.out.println(e);
         });
-        this.consumer.subscribe("RESULT");
+        this.consumer.subscribe("broker_219.223.196.132");
     }
 
 

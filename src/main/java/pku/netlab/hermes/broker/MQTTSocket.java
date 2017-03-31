@@ -1,5 +1,6 @@
 package pku.netlab.hermes.broker;
 
+import hermes.dataobj.Event;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -14,6 +15,9 @@ import pku.netlab.hermes.MQTTPacketTokenizer;
 import pku.netlab.hermes.QOSUtils;
 import pku.netlab.hermes.parser.MQTTDecoder;
 import pku.netlab.hermes.parser.MQTTEncoder;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.dna.mqtt.moquette.proto.messages.AbstractMessage.*;
 
@@ -37,6 +41,10 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
     private boolean keepAliveTimeEnded;
     private Handler<String> keepAliveErrorHandler;
     private MessageConsumer<Buffer> consumer;
+
+    //for benchmark
+    Map<String, Long> rttMap = new HashMap<>();
+
 
     public MQTTSocket(Vertx vertx, NetSocket netSocket, CoreProcessor processor) {
         this.decoder = new MQTTDecoder();
@@ -208,6 +216,22 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
                                         session.handlePublishMessageWithKey(pub);
                                     }
                                 });
+
+
+                                //below is for benchmark
+                                localServerEB.consumer("BENCHMARK",  (Message<Buffer> message) -> {
+                                    Event e = Event.fromBytes(message.body().getBytes());
+                                    PublishMessage pub = new PublishMessage();
+                                    pub.setPayload(e.toByteBuffer());
+                                    pub.setTopicName(clientID);
+                                    pub.setMessageID(0);
+                                    pub.setQos(QOSType.LEAST_ONE);
+                                    int id = session.handlePublishMessage(pub);
+                                    String key = clientID + id;
+                                    rttMap.put(key, e.timestamp);
+                                });
+                                //above is for benchmark
+
                             } catch (Exception e) {
                                 e.printStackTrace();
                                 logger.warn("session failed to process CONNECT because " + e.getMessage());
@@ -384,7 +408,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
     public void handle(Message<Buffer> ebMsg) {
         try {
             AbstractMessage msg = this.decoder.dec(ebMsg.body());
-            logger.info("from internal publish: " + msg);
+            //logger.info("from internal publish: " + msg);
             switch (msg.getMessageType()) {
                 case DISCONNECT:
                     closeConnection();
@@ -397,6 +421,12 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    //for benchmark
+    private void _rttCalc(PubAckMessage ack) {
+        String key = session.getClientID() + ack.getMessageID();
+        logger.info("rtt: " + (System.currentTimeMillis() - rttMap.get(key)));
     }
 
     @Override
