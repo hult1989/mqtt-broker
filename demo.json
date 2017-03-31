@@ -21,16 +21,15 @@
 
   "kafka": {
     "consumer": {
-      "zookeeper.connect": "server:2181",
+      "bootstrap.servers": "server:9092",
       "group.id": "HermesKafka",
-      "consumer.poll.interval.ms": 200,
-      "auto.offset.reset": "smallest",
-      "bootstrap.servers": "server:9092"
+      "auto.offset.reset": "latest",
+      "enable.auto.commit": "false"
     },
     "producer": {
-      "serializer.class": "org.apache.kafka.common.serialization.StringSerializer",
+      "default_topic": "EVENT",
       "bootstrap.servers": "server:9092",
-      "default_topic": "EVENT"
+      "acks": "1"
     }
   },
 

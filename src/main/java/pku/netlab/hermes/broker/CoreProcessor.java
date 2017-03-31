@@ -11,14 +11,11 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.shareddata.LocalMap;
 import io.vertx.spi.cluster.zookeeper.ZookeeperClusterManager;
-import org.dna.mqtt.moquette.proto.messages.AbstractMessage;
-import org.dna.mqtt.moquette.proto.messages.DisconnectMessage;
 import org.dna.mqtt.moquette.proto.messages.PublishMessage;
 import org.dna.mqtt.moquette.proto.messages.PublishMessageWithKey;
 import pku.netlab.hermes.ClusterCommunicator;
 import pku.netlab.hermes.broker.Impl.KafkaMQ;
 import pku.netlab.hermes.broker.Impl.RedisSessionStore;
-import pku.netlab.hermes.message.PendingMessage;
 import pku.netlab.hermes.parser.MQTTEncoder;
 
 import java.net.NetworkInterface;
@@ -88,7 +85,7 @@ public class CoreProcessor {
 
     private void deployManyVerticles() {
         messageQueue = deployKafka();
-        sessionStore = deploySessionStore();
+        //sessionStore = deploySessionStore();
         sessionLocalMap = brokerVertx.sharedData().getLocalMap("SESSION_LOCAL_MAP");
         deployStateServer();
         deployBrokers();
@@ -135,14 +132,15 @@ public class CoreProcessor {
         server.requestHandler(req-> {
             if (req.method() == HttpMethod.GET) {
                 if (req.path().contains("users")) {
+                    String ret = String.format("LocalMap: {%s}\n", sessionLocalMap);
+                    req.response().end(ret);
+                    /*
                     this.sessionStore.getAllMembers(brokerID, res -> {
                         if (!res.succeeded()) {
                             logger.warn("failed to get all members from redis");
                         }
-                        String ret = String.format("Redis: {%s}\nLocalMap: {%s}\n",
-                                res.result().toString(), sessionLocalMap);
-                        req.response().end(ret);
                     });
+                     */
                 } else if (req.path().contains("brokers")) {
                     req.response().end(this.clusterCommunicator.getBrokers());
                 }
@@ -191,8 +189,10 @@ public class CoreProcessor {
 
 
     public void clientLogin(String clientID, Handler<AsyncResult<Void>> handler){
+        handler.handle(Future.succeededFuture());
         //keep track of which
         //brokerEB.send(clientID, new DisconnectMessage());
+        /*
         sessionStore.brokerOfClient(clientID, get-> {
             if (brokerID.equals(get.result())) {
                 if (sessionLocalMap.get(clientID) != null) {
@@ -212,21 +212,22 @@ public class CoreProcessor {
                 sessionStore.addClient(brokerID, clientID, handler);
             }
         });
+        */
     }
 
     public void clientLogout(String clientID){
         sessionLocalMap.remove(clientID);
-        sessionStore.removeClient(brokerID, clientID, aVoid->{});
+        //sessionStore.removeClient(brokerID, clientID, aVoid->{});
     };
 
     public void storeMessage(){};
 
     public void delMessage(String key, String clientID) {
-        sessionStore.removePendingMessage(key, clientID);
+        //sessionStore.removePendingMessage(key, clientID);
     }
 
     public void delMessage(String key){
-        sessionStore.removeMessage(key);
+        //sessionStore.removeMessage(key);
     };
 
     public String getClientSession(String clientID){
@@ -245,28 +246,6 @@ public class CoreProcessor {
         }
     }
 
-    public void handleMsgFromMQ(JsonObject msg){
-        JsonObject value = new JsonObject(msg.getString("value"));
-        try {
-            PendingMessage pending = new PendingMessage(value);
-            logger.info("pending message: " + pending);
-            PublishMessage publish = new PublishMessage();
-            publish.setPayload(pending.msg);
-            publish.setQos(AbstractMessage.QOSType.LEAST_ONE);
-            //a random message id is OK since it will be rewritten in MQTTSession
-            publish.setMessageID((int)System.currentTimeMillis() % 65536);
-            for (Object o: pending.targets) {
-                String client = (String) o;
-                if (sessionLocalMap.get(client) == null) {
-                    logger.error("cannot find " + client + " in sessionLocalMap");
-                }
-                publish.setTopicName(client);
-                brokerEB.send(client, encoder.enc(publish));
-            }
-        } catch (Exception e) {
-            logger.error(e.getMessage());
-        }
-    }
 
     public void saveSubscription(){};
 
@@ -277,7 +256,7 @@ public class CoreProcessor {
     }
 
     public void getPendingMessages(String clientID, Handler<List<PublishMessageWithKey>> handler) {
-        sessionStore.pendingMessages(clientID, handler);
+        //sessionStore.pendingMessages(clientID, handler);
     }
 
 }

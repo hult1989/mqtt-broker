@@ -1,11 +1,11 @@
 package pku.netlab.hermes;
 
-import com.cyngn.kafka.produce.MessageProducer;
 import io.vertx.core.*;
 import io.vertx.core.cli.CLI;
 import io.vertx.core.cli.CLIException;
 import io.vertx.core.cli.CommandLine;
 import io.vertx.core.cli.Option;
+import io.vertx.core.eventbus.MessageProducer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;

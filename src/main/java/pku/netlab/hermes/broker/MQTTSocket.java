@@ -316,6 +316,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
             case PUBACK:
                 resetKeepAliveTimer();
                 session.handlePublishAck((PubAckMessage)msg);
+                _rttCalc((PubAckMessage)msg);
                 break;
             case PINGREQ:
                 resetKeepAliveTimer();
