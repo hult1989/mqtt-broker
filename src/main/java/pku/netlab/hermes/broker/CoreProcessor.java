@@ -1,5 +1,6 @@
 package pku.netlab.hermes.broker;
 
+import hermes.dataobj.Event;
 import io.vertx.core.*;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.http.HttpMethod;
@@ -10,14 +11,12 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.shareddata.LocalMap;
 import io.vertx.spi.cluster.zookeeper.ZookeeperClusterManager;
-import org.dna.mqtt.moquette.proto.messages.AbstractMessage;
 import org.dna.mqtt.moquette.proto.messages.DisconnectMessage;
 import org.dna.mqtt.moquette.proto.messages.PublishMessage;
 import org.dna.mqtt.moquette.proto.messages.PublishMessageWithKey;
 import pku.netlab.hermes.ClusterCommunicator;
 import pku.netlab.hermes.broker.Impl.KafkaMQ;
 import pku.netlab.hermes.broker.Impl.RedisSessionStore;
-import pku.netlab.hermes.message.PendingMessage;
 import pku.netlab.hermes.parser.MQTTEncoder;
 
 import java.net.NetworkInterface;
@@ -234,7 +233,9 @@ public class CoreProcessor {
 
     void updateClientStatus(){}
 
-    public void handleMsgFromMQ(JsonObject msg){
+    public void handleMsgFromMQ(byte[] byteMsg){
+        System.out.println("from MQ: " + Event.fromBytes(byteMsg));
+        /*
         JsonObject value = new JsonObject(msg.getString("value"));
         try {
             PendingMessage pending = new PendingMessage(value);
@@ -255,6 +256,7 @@ public class CoreProcessor {
         } catch (Exception e) {
             logger.error(e.getMessage());
         }
+        */
     }
 
     public void saveSubscription(){};
