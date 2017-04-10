@@ -209,6 +209,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
                                 connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
                                 sendMessageToClient(connAck);
                                 startKeepAliveTimer(connect.getKeepAlive());
+                                /*
                                 m_processor.getPendingMessages(clientID, lists -> {
                                     logger.info("try to get pending messages for " + clientID);
                                     for (PublishMessageWithKey pub : lists) {
@@ -216,6 +217,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
                                         session.handlePublishMessageWithKey(pub);
                                     }
                                 });
+                                 */
 
 
                                 //below is for benchmark
@@ -316,7 +318,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
             case PUBACK:
                 resetKeepAliveTimer();
                 session.handlePublishAck((PubAckMessage)msg);
-                _rttCalc((PubAckMessage)msg);
+                //_rttCalc((PubAckMessage)msg);
                 break;
             case PINGREQ:
                 resetKeepAliveTimer();
@@ -427,7 +429,9 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
     //for benchmark
     private void _rttCalc(PubAckMessage ack) {
         String key = session.getClientID() + ack.getMessageID();
-        logger.info("rtt: " + (System.currentTimeMillis() - rttMap.get(key)));
+        long now = System.currentTimeMillis();
+        logger.info("rtt: " + (now - rttMap.get(key)));
+        logger.info("time: " + now);
     }
 
     @Override

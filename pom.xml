@@ -188,7 +188,7 @@
                                     <exclude>org.slf4j:slf4j-api</exclude-->
                                 </excludes>
                             </artifactSet>
-                            <outputFile>${project.build.directory}/${project.artifactId}-${project.version}-fat.jar</outputFile>
+                            <outputFile>${project.build.directory}/${project.artifactId}-fat.jar</outputFile>
                         </configuration>
                     </execution>
                 </executions>

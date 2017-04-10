@@ -53,7 +53,10 @@ public class KafkaMQ implements IMessageQueue{
     private void deployConsumer(Vertx vertx, JsonObject consumerConf, Handler<byte[]> msgHandler) {
         Map<String, String> confMap = consumerConf.stream().collect(Collectors.toMap(Map.Entry::getKey, e -> (String) e.getValue()));
         this.consumer = KafkaConsumer.create(vertx, confMap, String.class, byte[].class);
-        this.consumer.handler(msg -> msgHandler.handle(msg.value()));
+        this.consumer.handler(msg -> {
+            msgHandler.handle(msg.value());
+            logger.info("time: " + System.currentTimeMillis());
+        });
         this.consumer.subscribe(confMap.get("topic"), sub-> {
             if (sub.succeeded()) {
                 logger.info(String.format("kafka deployed at %s with TOPIC %s",
