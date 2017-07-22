@@ -68,7 +68,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
 
 
 
-    public void sendBytesOverSocket(Buffer bytes) {
+    private void sendBytesOverSocket(Buffer bytes) {
         try {
             netSocket.write(bytes);
             if (netSocket.writeQueueFull()) {
@@ -129,10 +129,9 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
         logger.info("Broker <<< " + getClientInfo() + " :" + msg);
         switch (msg.getMessageType()) {
             case CONNECT:
-
                 ConnectMessage connect = (ConnectMessage)msg;
-                ConnAckMessage connAck = new ConnAckMessage();
                 if (session != null) {
+                    ConnAckMessage connAck = new ConnAckMessage();
                     logger.warn(String.format("duplicate CONNECT from an existing session %s at %s\n",
                             connect.getClientID(), netSocket.remoteAddress()));
                     /*
@@ -173,51 +172,8 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
                      */
-                    String clientID = connect.getClientID();
                     this.session = new MQTTSession(this, m_processor);
-                    this.session.setPublishMessageHandler(this::sendMessageToClient);
-
-                    m_processor.clientLogin(clientID, aVoid-> {
-                        if (aVoid.succeeded()) {
-                            setKeepAliveErrorHandler(cinfo -> {
-                                if (session != null) {
-                                    cinfo = session.getClientID();
-                                }
-                                logger.warn("keep alive exhausted! closing connection for client[" + cinfo + "] ...");
-                                closeConnection();
-                            });
-
-                            connAck.setSessionPresent(false);
-                            try {
-                                session.handleConnectMessage(connect);
-                                this.consumer = localServerEB.consumer(clientID, this);
-                                this.consumer.completionHandler(reg-> {
-                                    if (reg.succeeded()) {
-                                        logger.info(clientID + " registered to localEB");
-                                    } else {
-                                        logger.error(clientID + " failed to register to localEB");
-                                    }
-                                });
-                                connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
-                                sendMessageToClient(connAck);
-                                startKeepAliveTimer(connect.getKeepAlive());
-                                m_processor.getPendingMessages(clientID, lists -> {
-                                    logger.info("try to get pending messages for " + clientID);
-                                    for (PublishMessageWithKey pub : lists) {
-                                        pub.setTopicName(clientID);
-                                        session.handlePublishMessageWithKey(pub);
-                                    }
-                                });
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                                logger.warn("session failed to process CONNECT because " + e.getMessage());
-                                clean();
-                            }
-                        } else {
-                            logger.info("failed to write to Redis");
-                            closeConnection();
-                        }
-                });
+                    this.session.handleConnectMessage(connect);
             }
             break;
             case SUBSCRIBE:
@@ -311,7 +267,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
     }
 
 
-    private void sendMessageToClient(AbstractMessage message) {
+    public void sendMessageToClient(AbstractMessage message) {
         try {
             logger.info(">>> " + message);
             Buffer b1 = encoder.enc(message);
@@ -336,7 +292,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
     }
 
 
-    private void startKeepAliveTimer(int keepAliveSeconds) {
+    public void startKeepAliveTimer(int keepAliveSeconds) {
         if (keepAliveSeconds > 0) {
 //            stopKeepAliveTimer();
             keepAliveTimeEnded = true;
@@ -372,8 +328,8 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
             logger.error("Cannot stop keep-alive timer with ID: "+keepAliveTimerID +" "+ getClientInfo(), e);
         }
     }
-    private void setKeepAliveErrorHandler(Handler<String> handler) {
-        this.keepAliveErrorHandler = handler;
+    private void setKeepAliveErrorHandler() {
+        closeConnection();
     }
 
     public void resetKeepAliveTimer() {
@@ -397,6 +353,10 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public void setConsumer(MessageConsumer<Buffer> consumer) {
+        this.consumer = consumer;
     }
 
     @Override

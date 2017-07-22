@@ -3,7 +3,7 @@
       "tcp_port": 1883,
       "socket_idle_timeout": 600,
       "message_store": "DB",
-      "network_id": "219.223",
+      "network_id": "10.1",
       "broker_prefix": "broker" //or 'standby'
     },
 
@@ -35,7 +35,7 @@
 
   "redis": {
     "host": "server",
-    "port": 6380,
+    "port": 6379,
     "encoding": "UTF-8",
     "tcpKeepAlive": true,
     "tcpNoDelay": true

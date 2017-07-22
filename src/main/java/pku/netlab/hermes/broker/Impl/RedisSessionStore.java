@@ -52,9 +52,7 @@ public class RedisSessionStore implements ISessionStore{
 
     @Override
     public void brokerOfClient(String clientID, Handler<AsyncResult<String>> handler) {
-        this.redisClient.get(clientID, get-> {
-            handler.handle(get);
-        });
+        this.redisClient.get(clientID, handler::handle);
     }
 
     @Override

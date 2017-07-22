@@ -25,18 +25,19 @@ public class ClusterCommunicator extends AbstractVerticle {
         this.manager.nodeListener(new NodeListener() {
             @Override
             public void nodeAdded(String nodeID) {
-
+                System.out.println(String.format("node %s joined!", nodeID));
             }
 
             @Override
             public void nodeLeft(String nodeID) {
+                System.out.println(String.format("node %s left!", nodeID));
                 standbySwitch(nodeID);
             }
         });
     }
 
     private void standbySwitch(String nodeID) {
-        if (nodeID.equals("standby")) {
+        if (!nodeID.equals("standby")) {
             return;
         }
         logger.info("hot standby switching...");

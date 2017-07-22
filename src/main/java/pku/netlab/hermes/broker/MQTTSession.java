@@ -1,6 +1,8 @@
 package pku.netlab.hermes.broker;
 
 import io.vertx.core.Handler;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import org.dna.mqtt.moquette.proto.messages.AbstractMessage.QOSType;
@@ -34,9 +36,6 @@ public class MQTTSession {
         this.inFlightMsgs = new HashMap<>();
     }
 
-    public void setPublishMessageHandler(Handler<PublishMessage> publishMessageHandler) {
-        this.publishMessageHandler = publishMessageHandler;
-    }
 
     public void handlePublishAck(PubAckMessage ack) {
         inFlightAcknowledged(ack.getMessageID());
@@ -54,19 +53,44 @@ public class MQTTSession {
 
 
     public void handleConnectMessage(ConnectMessage connectMessage) throws Exception {
-
         this.clientID = connectMessage.getClientID();
         this.cleanSession = connectMessage.isCleanSession();
-        _handleConnectMessage(connectMessage);
-    }
-
-
-    private void _handleConnectMessage(ConnectMessage connectMessage) {
-        if (!cleanSession) {
-            logger.info("cleanSession=false: restore old session state with subscriptions ...");
-        } else {
-        }
-        logger.info(this.toString());
+        m_processor.clientLogin(clientID, loginSessionStore-> {
+            if (loginSessionStore.succeeded()) {
+                ConnAckMessage connAck = new ConnAckMessage();
+                connAck.setSessionPresent(false);
+                try {
+                    //TODO: localConsumer, limit number of vertx
+                    MessageConsumer<Buffer> consumer = m_processor.getBrokerEB().consumer(clientID, clientSocket);
+                    consumer.completionHandler(reg-> {
+                        clientSocket.setConsumer(consumer);
+                        if (reg.succeeded()) {
+                            logger.info(clientID + " registered to localEB");
+                        } else {
+                            logger.error(clientID + " failed to register to localEB");
+                            System.exit(0);
+                        }
+                    });
+                    connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
+                    clientSocket.sendMessageToClient(connAck);
+                    clientSocket.startKeepAliveTimer(connectMessage.getKeepAlive());
+                    m_processor.getPendingMessages(clientID, lists -> {
+                        logger.info("try to get pending messages for " + clientID);
+                        for (PublishMessageWithKey pub : lists) {
+                            pub.setTopicName(clientID);
+                            this.handlePublishMessageWithKey(pub);
+                        }
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    logger.warn("session failed to process CONNECT because " + e.getMessage());
+                    shutdown();
+                }
+            } else {
+                logger.info("failed to write to Redis, " + loginSessionStore.result());
+                shutdown();
+            }
+        });
     }
 
 
@@ -100,8 +124,7 @@ public class MQTTSession {
     }
 
     public void sendPublishMessage(PublishMessage pm) {
-        if(publishMessageHandler!=null)
-            publishMessageHandler.handle(pm);
+        clientSocket.sendMessageToClient(pm);
     }
 
 

@@ -1,6 +1,5 @@
 package pku.netlab.hermes.broker;
 
-import hermes.dataobj.Event;
 import io.vertx.core.*;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.http.HttpMethod;
@@ -40,7 +39,7 @@ public class CoreProcessor {
     private ISessionStore sessionStore;
     private IMessageQueue messageQueue;
     private LocalMap<String, String> sessionLocalMap;
-    private ArrayList<MQTTBroker> brokerList;
+    private List<MQTTBroker> mqttBrokers;
     private MQTTEncoder encoder;
     private String brokerID;
     private String ipAddress;
@@ -66,11 +65,12 @@ public class CoreProcessor {
     }
 
     public CoreProcessor(JsonObject config) {
+        //this vertx is created to init all BrokerVerticle
         this.brokerVertx = Vertx.vertx();
         this.config = config;
         this.ipAddress = getIpAddress(config.getJsonObject("broker").getString("network_id"));
         this.brokerID = config.getJsonObject("broker").getString("broker_prefix") + "_" + this.ipAddress;
-        this.brokerList = new ArrayList<>(Runtime.getRuntime().availableProcessors());
+        this.mqttBrokers = new ArrayList<>(Runtime.getRuntime().availableProcessors());
         this.brokerEB = brokerVertx.eventBus();
         this.encoder = new MQTTEncoder();
         deployClusterCommunicator();
@@ -121,8 +121,9 @@ public class CoreProcessor {
     private void deployBrokers() {
         for (int i = 0 ; i < Runtime.getRuntime().availableProcessors(); i += 1) {
             MQTTBroker broker = new MQTTBroker(this);
-            brokerList.add(broker);
-            brokerVertx.deployVerticle(broker, new DeploymentOptions().setConfig(config.getJsonObject("broker")));
+            mqttBrokers.add(broker);
+            brokerVertx.deployVerticle(broker,
+                new DeploymentOptions().setConfig(config.getJsonObject("broker").put("ip", this.ipAddress)));
         }
     }
 
@@ -203,6 +204,7 @@ public class CoreProcessor {
                 } else {
                     sessionLocalMap.put(clientID, brokerID);
                 }
+
                 sessionStore.addClient(brokerID, clientID, handler);
             } else {
                 //need broadcast clientID among cluster, let disconnect this Client from another broker
@@ -234,7 +236,6 @@ public class CoreProcessor {
     void updateClientStatus(){}
 
     public void handleMsgFromMQ(byte[] byteMsg){
-        System.out.println("from MQ: " + Event.fromBytes(byteMsg));
         /*
         JsonObject value = new JsonObject(msg.getString("value"));
         try {
@@ -271,4 +272,7 @@ public class CoreProcessor {
         sessionStore.pendingMessages(clientID, handler);
     }
 
+    public EventBus getBrokerEB() {
+        return brokerEB;
+    }
 }

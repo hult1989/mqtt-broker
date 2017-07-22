@@ -68,12 +68,6 @@ def init_client(host):
 
 
 if __name__ == '__main__':
-    host = 'localhost'
-    for i in xrange(1):
-        t = Thread(target=init_client, args=(host,))
-        t.start()
-    '''
-        host = sys.argv[1]
-        print host
-        init_client(host)
-    '''
+    host = '10.1.198.163'
+    print host
+    init_client(host)

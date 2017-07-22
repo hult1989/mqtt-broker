@@ -11,7 +11,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <vertx.version>3.4.1</vertx.version>
+        <vertx.version>3.4.2</vertx.version>
         <vertx.scope>provided</vertx.scope>
         <wso2.scope>provided</wso2.scope>
     </properties>
@@ -34,11 +34,6 @@
 
 
     <dependencies>
-        <dependency>
-            <groupId>netlab</groupId>
-            <artifactId>matcher</artifactId>
-            <version>0.9</version>
-        </dependency>
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-core</artifactId>
@@ -123,40 +118,6 @@
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>2.3</version>
                 <executions>
-                    <execution>
-                        <id>Router-main</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <manifestEntries>
-                                        <Main-Class>pku.netlab.hermes.router.Router</Main-Class>
-                                    </manifestEntries>
-                                </transformer>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
-                                    <resource>META-INF/services/io.vertx.core.spi.VerticleFactory</resource>
-                                </transformer>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
-                                    <resource>META-INF/cxf/bus-extensions.txt</resource>
-                                </transformer>
-                            </transformers>
-                            <artifactSet>
-                                <!-- By default all the deps go into the fat jar, but we don't need some so we can exclude them
-                                here -->
-                                <excludes>
-                                    <exclude>io.vertx:vertx-codegen</exclude>
-                                    <exclude>junit:junit</exclude>
-                                    <exclude>org.mvel:mvel2</exclude>
-                                    <!--exclude>log4j:log4j</exclude>
-                                    <exclude>org.slf4j:slf4j-api</exclude-->
-                                </excludes>
-                            </artifactSet>
-                            <outputFile>${project.build.directory}/Router-${project.version}-fat.jar</outputFile>
-                        </configuration>
-                    </execution>
                     <execution>
                         <id>Broker-main</id>
                         <phase>package</phase>
