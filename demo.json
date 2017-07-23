@@ -3,7 +3,7 @@
       "tcp_port": 1883,
       "socket_idle_timeout": 600,
       "message_store": "DB",
-      "network_id": "10.1",
+      "network_id": "192.168",
       "broker_prefix": "broker" //or 'standby'
     },
 
@@ -43,5 +43,9 @@
 
   "hbase": {
     "quorum": "server"
+  },
+
+  "pushServer": {
+    "port": 8080
   }
 }

@@ -42,10 +42,12 @@ public class ClusterCommunicator extends AbstractVerticle {
         }
         logger.info("hot standby switching...");
         String IDofCrashedBroker = map.remove(nodeID);
-        processor.updateBrokerID(IDofCrashedBroker);
+        processor.setBrokerID(IDofCrashedBroker);
         map.put(manager.getNodeID(), IDofCrashedBroker);
+        /*
         map.put(processor.getBrokerID(), processor.getHost());
         processor.start();
+        */
     }
 
     @Override
@@ -53,8 +55,10 @@ public class ClusterCommunicator extends AbstractVerticle {
         logger.info(String.format("%s assigned with brokerID %s", manager.getNodeID(), processor.getBrokerID()));
         logger.info("working nodes: " + String.valueOf(manager.getNodes()));
         this.map = manager.getSyncMap("brokers");
+        /*
         map.put(manager.getNodeID(), processor.getBrokerID());
         map.put(processor.getBrokerID(), processor.getHost());
+        */
     }
 
     public String getBrokers() {

@@ -13,13 +13,13 @@ import org.dna.mqtt.moquette.proto.messages.PublishMessage;
 import java.util.HashMap;
 
 
-public class MQTTBroker extends AbstractVerticle {
+public class MQTTServer extends AbstractVerticle {
     private final CoreProcessor processor;
     private HashMap<String, MQTTSession> threadLocalSessionMap;
-    private Logger logger = LoggerFactory.getLogger(MQTTBroker.class);
+    private Logger logger = LoggerFactory.getLogger(MQTTServer.class);
     private Context threadLocalContext;
 
-    public MQTTBroker(CoreProcessor processor) {
+    public MQTTServer(CoreProcessor processor) {
         this.processor = processor;
         this.threadLocalSessionMap = new HashMap<>();
     }
@@ -51,45 +51,16 @@ public class MQTTBroker extends AbstractVerticle {
                 .setReceiveBufferSize(4096)
                 .setSendBufferSize(4096)
                 .setReuseAddress(true)
-                .setHost(processor.getHost())
+                .setHost(processor.getIpAddress())
                 .setTcpNoDelay(true)
                 .setPort(port);
 
         NetServer netServer = vertx.createNetServer(opt);
         netServer.connectHandler(netSocket -> {
-            MQTTSocket mqttSocket = new MQTTSocket(vertx, netSocket, processor);
+            MQTTConnection mqttConnection = new MQTTConnection(vertx, netSocket, processor);
             logger.info("a client connected from " + netSocket.remoteAddress());
             //TODO: make sessionStore and onlineUsers thread-safe
-            mqttSocket.start();
+            mqttConnection.start();
         }).listen();
-    }
-
-    public void shutDownClientSession(String clientID) {
-        threadLocalContext.runOnContext(aVoid-> {
-            MQTTSession session = threadLocalSessionMap.get(clientID);
-            if (session != null) {
-                session.shutdown();
-                threadLocalSessionMap.remove(clientID);
-            }
-        });
-    }
-
-    public void addSession(String clientID, MQTTSession session) {
-        threadLocalContext.runOnContext(aVoid-> {
-            threadLocalSessionMap.put(clientID, session);
-        });
-    }
-
-    public void sendMessage(String clientID, PublishMessage msg) {
-        threadLocalContext.runOnContext(aVoid-> {
-            MQTTSession session = threadLocalSessionMap.get(clientID);
-            if (session != null) {
-                session.sendPublishMessage(msg);
-            }
-        });
-    }
-
-    public EventBus getServerWideEventbus() {
-        return vertx.eventBus();
     }
 }

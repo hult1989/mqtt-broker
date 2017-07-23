@@ -1,44 +1,42 @@
 package pku.netlab.hermes.broker;
 
-import io.vertx.core.Handler;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import org.dna.mqtt.moquette.proto.messages.AbstractMessage.QOSType;
 import org.dna.mqtt.moquette.proto.messages.*;
 import pku.netlab.hermes.persistence.Subscription;
 
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 /**
  * Base class for connection handling, 1 tcp connection corresponds to 1 instance of this class.
  */
 public class MQTTSession {
-
     private static Logger logger = LoggerFactory.getLogger(MQTTSession.class);
 
-    private MQTTSocket clientSocket;
-    private String clientID;
-    private boolean cleanSession;
-    private Handler<PublishMessage> publishMessageHandler;
+    private MQTTConnection clientConnection;
+    public final String clientID;
     private CoreProcessor m_processor;
     private int msgID;
-    private HashMap<Integer, String> inFlightMsgs;
+    private Map<Integer, String> inFlight;
+    public final boolean cleanSession;
 
 
-    public MQTTSession(MQTTSocket socket, CoreProcessor processor) {
-        this.clientSocket = socket;
+    public MQTTSession(MQTTConnection conn, CoreProcessor processor, ConnectMessage conMsg) {
+        this.clientConnection = conn;
         this.m_processor = processor;
         this.msgID = -1;
-        this.inFlightMsgs = new HashMap<>();
+        this.inFlight = new HashMap<>();
+        this.cleanSession = conMsg.isCleanSession();
+        this.clientID = conMsg.getClientID();
+        this.clientConnection.startKeepAliveTimer(conMsg.getKeepAlive());
+        this.sessionInit();
     }
 
-
     public void handlePublishAck(PubAckMessage ack) {
-        inFlightAcknowledged(ack.getMessageID());
+        //TODO: how should message be removed? processor desides
+        String uniqID = inFlight.remove(ack.getMessageID());
+        m_processor.onPubAck(clientID, uniqID);
     }
 
     private int nextMessageID() {
@@ -46,48 +44,21 @@ public class MQTTSession {
         return msgID;
     }
 
-    private void inFlightAcknowledged(int messageID) {
-        String key = inFlightMsgs.remove(msgID);
-        m_processor.delMessage(key, clientID);
-    }
 
+    private void sessionInit() {
+        m_processor.onCreatingSession(clientID, login -> {
+            if (login.succeeded()) {
+                clientConnection.registerOnEventBus(clientID);
 
-    public void handleConnectMessage(ConnectMessage connectMessage) throws Exception {
-        this.clientID = connectMessage.getClientID();
-        this.cleanSession = connectMessage.isCleanSession();
-        m_processor.clientLogin(clientID, loginSessionStore-> {
-            if (loginSessionStore.succeeded()) {
                 ConnAckMessage connAck = new ConnAckMessage();
                 connAck.setSessionPresent(false);
-                try {
-                    //TODO: localConsumer, limit number of vertx
-                    MessageConsumer<Buffer> consumer = m_processor.getBrokerEB().consumer(clientID, clientSocket);
-                    consumer.completionHandler(reg-> {
-                        clientSocket.setConsumer(consumer);
-                        if (reg.succeeded()) {
-                            logger.info(clientID + " registered to localEB");
-                        } else {
-                            logger.error(clientID + " failed to register to localEB");
-                            System.exit(0);
-                        }
-                    });
-                    connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
-                    clientSocket.sendMessageToClient(connAck);
-                    clientSocket.startKeepAliveTimer(connectMessage.getKeepAlive());
-                    m_processor.getPendingMessages(clientID, lists -> {
-                        logger.info("try to get pending messages for " + clientID);
-                        for (PublishMessageWithKey pub : lists) {
-                            pub.setTopicName(clientID);
-                            this.handlePublishMessageWithKey(pub);
-                        }
-                    });
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    logger.warn("session failed to process CONNECT because " + e.getMessage());
-                    shutdown();
-                }
+                connAck.setReturnCode(ConnAckMessage.CONNECTION_ACCEPTED);
+                clientConnection.sendMessageToClient(connAck);
+                /**
+                 * TODO：登录后是否拉取消息进行推送，应该由CoreProcessor决定
+                 */
+                m_processor.onSessionCreated(this);
             } else {
-                logger.info("failed to write to Redis, " + loginSessionStore.result());
                 shutdown();
             }
         });
@@ -97,36 +68,22 @@ public class MQTTSession {
     public void handleSubscribeMessage(SubscribeMessage subscribeMessage) {
     }
 
-
-    //call this method to publish message to client
-    /*
-    public void handlePublishMessage(PublishMessage pub) {
-        context.runOnContext(v-> m_handlePublishMessage(pub));
-    }
-    */
-
-
     public  void handlePublishMessage(PublishMessage publishMessage) {
         QOSType originalQos = publishMessage.getQos();
-        if (originalQos == QOSType.LEAST_ONE) {
-            publishMessage.setMessageID(nextMessageID());
+        if (originalQos == QOSType.MOST_ONE) {
+        } else {
+            try {
+                m_processor.saveMessage(publishMessage, key -> {
+                });
+            } catch (Exception e) {
+                return;
+            }
         }
-        sendPublishMessage(publishMessage);
-    }
-
-    public  void handlePublishMessageWithKey(PublishMessageWithKey pub) {
-        this.handlePublishMessage(pub);
-        inFlightMsgs.put(pub.getMessageID(), pub.getGlobalKey());
     }
 
     private List<Subscription> getAllMatchingSubscriptions(String topic) {
         return new LinkedList<>();
     }
-
-    public void sendPublishMessage(PublishMessage pm) {
-        clientSocket.sendMessageToClient(pm);
-    }
-
 
 
     public void handleUnsubscribeMessage(UnsubscribeMessage unsubscribeMessage) {
@@ -144,27 +101,35 @@ public class MQTTSession {
     }
 
     public void shutdown() {
-        //TODO if not clean session, in flight messages should be saved to database
+        //TODO: if not clean session, in flight messages should be processed
         if (m_processor != null) {
             m_processor.clientLogout(clientID);
         }
         logger.info(this.toString() + " will shut down, removed from online sessions");
-        if (this.clientSocket != null) {
-            this.clientSocket.closeConnection();
+        if (this.clientConnection != null) {
+            this.clientConnection.closeConnection();
         }
-        this.clientSocket = null;
+        this.clientConnection = null;
         this.m_processor = null;
         // stop timers
     }
 
-
-    public String getClientID() {
-        return this.clientID;
+    //always assume that message have be saved before send to client
+    public void publishMessageToClient(PublishMessage pub, String uniqID) {
+        if (pub.getQos() == QOSType.LEAST_ONE) {
+            int msgId = nextMessageID();
+            pub.setMessageID(msgId);
+            inFlight.putIfAbsent(msgId, uniqID);
+        }
+        clientConnection.sendMessageToClient(pub);
     }
 
-    public String getClientInfo() {
-        return clientID;
+    @Override
+    public String toString() {
+        //TODO：should show how many inflight
+        return String.format("[%s] at [%s]", clientID, clientConnection.toString());
     }
+}
 
 
     /*
@@ -223,10 +188,4 @@ public class MQTTSession {
         });
     }
     */
-
-    @Override
-    public String toString() {
-        return String.format("[%s] at [%s]", clientID, clientSocket.toString());
-    }
-}
 

@@ -3,7 +3,6 @@ package pku.netlab.hermes.broker;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.logging.Logger;
@@ -20,25 +19,23 @@ import static org.dna.mqtt.moquette.proto.messages.AbstractMessage.*;
 /**
  * Base class for connection handling, 1 tcp connection corresponds to 1 instance of this class.
  */
-public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Handler<Message<Buffer>> {
+public class MQTTConnection implements MQTTPacketTokenizer.MqttTokenizerListener, Handler<Message<Buffer>> {
 
-    private static Logger logger = LoggerFactory.getLogger(MQTTSocket.class);
+    private static Logger logger = LoggerFactory.getLogger(MQTTConnection.class);
 
     private Vertx vertx;
     private MQTTSession session;
     private CoreProcessor m_processor;
-    private EventBus localServerEB;
 
     private MQTTDecoder decoder;
     private MQTTEncoder encoder;
     private MQTTPacketTokenizer tokenizer;
     private NetSocket netSocket;
     private long keepAliveTimerID = -1;
-    private boolean keepAliveTimeEnded;
-    private Handler<String> keepAliveErrorHandler;
+    private boolean noHeartBeat;
     private MessageConsumer<Buffer> consumer;
 
-    public MQTTSocket(Vertx vertx, NetSocket netSocket, CoreProcessor processor) {
+    public MQTTConnection(Vertx vertx, NetSocket netSocket, CoreProcessor processor) {
         this.decoder = new MQTTDecoder();
         this.encoder = new MQTTEncoder();
         this.tokenizer = new MQTTPacketTokenizer();
@@ -46,7 +43,6 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
         this.vertx = vertx;
         this.netSocket = netSocket;
         this.m_processor = processor;
-        this.localServerEB = vertx.eventBus();
     }
 
     public void start() {
@@ -66,7 +62,12 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
         });
     }
 
-
+    public void registerOnEventBus(String clientID) {
+        //TODO: localConsumer, limit number of vertx
+        this.consumer = vertx.eventBus().localConsumer(clientID, this);
+        this.consumer = vertx.eventBus().localConsumer("BROADCAST", this);
+        logger.info(clientID + " registered to localEB");
+    }
 
     private void sendBytesOverSocket(Buffer bytes) {
         try {
@@ -79,6 +80,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
             logger.error(e.getMessage());
         }
     }
+
     public void closeConnection() {
         stopKeepAliveTimer();
         netSocket.close();
@@ -172,9 +174,8 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "clientaddr", remoteAddr, null);
                     DBClient.getRedisClient().hset("user:" + connect.getClientID(), "serveraddr", localAddr, null);
                      */
-                    this.session = new MQTTSession(this, m_processor);
-                    this.session.handleConnectMessage(connect);
-            }
+                    this.session = new MQTTSession(this, m_processor, connect);
+                }
             break;
             case SUBSCRIBE:
                 resetKeepAliveTimer();
@@ -210,7 +211,8 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
                 PublishMessage publish = (PublishMessage)msg;
                 //ByteBuffer buffer = ((PublishMessage) msg).getPayload();
                 //logger.info(Event.fromByteBuffer(buffer).toString());
-                m_processor.enqueKafka(publish);
+                //m_processor.enqueKafka(publish);
+                session.handlePublishMessage(publish);
                 switch (publish.getQos()) {
                     case MOST_ONE:
                         break;
@@ -286,7 +288,7 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
     protected String getClientInfo() {
         String clientInfo = "Session n/a";
         if(session != null) {
-            clientInfo = session.getClientInfo();
+            clientInfo = session.toString();
         }
         return clientInfo;
     }
@@ -295,26 +297,25 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
     public void startKeepAliveTimer(int keepAliveSeconds) {
         if (keepAliveSeconds > 0) {
 //            stopKeepAliveTimer();
-            keepAliveTimeEnded = true;
+            noHeartBeat = false;
         /*
          * If the Keep Alive value is non-zero and the Server does not receive a Control Packet from the Client
          * within one and a half times the Keep Alive time period, it MUST disconnect
          */
-            long keepAliveMillis = keepAliveSeconds * 1500;
-            keepAliveTimerID = vertx.setPeriodic(keepAliveMillis, tid -> {
-                if (keepAliveTimeEnded) {
+            keepAliveTimerID = vertx.setPeriodic(1500 * keepAliveSeconds, tid -> {
+                if (noHeartBeat) {
                     logger.info("keep-alive timer end " + getClientInfo());
                     //should cancel timer first since close connection will set vertx to null
-                    stopKeepAliveTimer();
-                    if (keepAliveErrorHandler != null && session != null) {
-                        keepAliveErrorHandler.handle(session.toString());
-                    }
+                    this.stopKeepAliveTimer();
+                    this.closeConnection();
                 }
-                // next time, will close connection
-                keepAliveTimeEnded = true;
+                // next time, will close connection, unless receive heart beat
+                noHeartBeat = true;
             });
         }
     }
+
+
     private void stopKeepAliveTimer() {
         if (keepAliveTimerID == -1) return;
         try {
@@ -328,12 +329,9 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
             logger.error("Cannot stop keep-alive timer with ID: "+keepAliveTimerID +" "+ getClientInfo(), e);
         }
     }
-    private void setKeepAliveErrorHandler() {
-        closeConnection();
-    }
 
     public void resetKeepAliveTimer() {
-        keepAliveTimeEnded = false;
+        noHeartBeat = false;
     }
 
     @Override
@@ -347,16 +345,13 @@ public class MQTTSocket implements MQTTPacketTokenizer.MqttTokenizerListener, Ha
                     ebMsg.reply("true");
                     break;
                 case PUBLISH:
-                    session.handlePublishMessage((PublishMessage)msg);
+                    String uniqID = ebMsg.headers().get("uniqID");
+                    session.publishMessageToClient((PublishMessage) msg, uniqID);
                     break;
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    public void setConsumer(MessageConsumer<Buffer> consumer) {
-        this.consumer = consumer;
     }
 
     @Override

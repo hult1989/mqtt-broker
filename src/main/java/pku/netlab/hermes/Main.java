@@ -8,7 +8,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import org.apache.commons.io.FileUtils;
-import pku.netlab.hermes.broker.CoreProcessor;
+import pku.netlab.hermes.broker.ProcessorContext;
 
 import java.io.File;
 import java.io.IOException;
@@ -59,9 +59,8 @@ public class Main {
             try {
                 String json = FileUtils.readFileToString(new File(confFilePath), "UTF-8");
                 JsonObject config = new JsonObject(json);
-
-                CoreProcessor processor = new CoreProcessor(config);
-                processor.start();
+                ProcessorContext processorContext = new ProcessorContext(config);
+                processorContext.run();
             } catch(IOException e) {
                 logger.fatal(e.getMessage(),e);
                 System.exit(0);

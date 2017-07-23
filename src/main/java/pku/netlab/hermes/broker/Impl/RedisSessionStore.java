@@ -1,5 +1,7 @@
 package pku.netlab.hermes.broker.Impl;
 
+import com.sun.javafx.fxml.expression.KeyPath;
+import com.sun.org.apache.xpath.internal.operations.Bool;
 import io.vertx.core.*;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -8,18 +10,27 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.redis.RedisClient;
 import io.vertx.redis.RedisOptions;
 import org.dna.mqtt.moquette.proto.messages.PublishMessageWithKey;
+import pku.netlab.hermes.broker.IMessageStore;
 import pku.netlab.hermes.broker.ISessionStore;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Created by hult on 1/13/17.
  * use redis set and string two data structure
- * set: broker-001-> {hult, alice, bob...}
- * string: hult: broker-001
+ * set: broker:broker-001 -> {hult, alice, bob...}
+ * key-value: user:${user} -> broker-001
+ * set: pending:${user} -> {}
+ * key-value: msg:${id }-> message
+ * TODO: key-value can be optimized by using HashSet in Redis
+ *
  */
-public class RedisSessionStore implements ISessionStore{
+
+public class RedisSessionStore implements ISessionStore, IMessageStore{
     Logger logger = LoggerFactory.getLogger(RedisSessionStore.class);
     private RedisClient redisClient;
 
@@ -52,7 +63,7 @@ public class RedisSessionStore implements ISessionStore{
 
     @Override
     public void brokerOfClient(String clientID, Handler<AsyncResult<String>> handler) {
-        this.redisClient.get(clientID, handler::handle);
+        this.redisClient.get(clientID, handler);
     }
 
     @Override
@@ -121,6 +132,68 @@ public class RedisSessionStore implements ISessionStore{
 
     private String setName(String clientID) {
         return "pending:" + clientID;
+    }
+
+    @Override
+    public void batchGet(List<String> messageIDs, Handler<List<String>> handler) {
+        this.redisClient.mgetMany(messageIDs, mget-> {
+            if (mget.succeeded()) {
+                handler.handle(mget.result().getList());
+            } else {
+                logger.error("failed to get {%s} from Redis", messageIDs);
+            }
+        });
+    }
+
+    @Override
+    public void batchRem(List<String> messageIDs, Handler<Boolean> handler) {
+        this.redisClient.delMany(messageIDs, del-> handler.handle(del.succeeded()));
+    }
+
+    @Override
+    public void rem(String id, Handler<Boolean> handler) {
+        this.redisClient.del(id, del -> handler.handle(del.succeeded()));
+
+    }
+
+    @Override
+    public void get(String id, Handler<String> handler) {
+        this.redisClient.get(id, get-> {
+            if (get.succeeded()) {
+                handler.handle(get.result());
+            } else {
+                handler.handle(null);
+            }
+        });
+    }
+
+    @Override
+    public void save(String message, Handler<String> handler) {
+        String key = UUID.randomUUID().toString();
+        this.redisClient.set(key, message, set-> {
+            if (set.succeeded()) {
+                handler.handle(key);
+            } else {
+                logger.error("failed to save message: " + message);
+            }
+        });
+    }
+
+    @Override
+    public void batchSave(List<String> messages, Handler<List<String>> handler) {
+        JsonObject keyvals = new JsonObject();
+        List<String> keyList = new ArrayList<>(messages.size());
+        messages.forEach(msg-> {
+            String randomKey = UUID.randomUUID().toString();
+            keyvals.put(randomKey, msg);
+        });
+        this.redisClient.mset(keyvals, set-> {
+            if (!set.succeeded()) {
+                logger.error("failed to set");
+            } else {
+                handler.handle(keyList);
+            }
+        });
     }
 }
 

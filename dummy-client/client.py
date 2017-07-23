@@ -61,13 +61,13 @@ def init_client(host):
     client.on_disconnect = on_disconnect
     #client.on_log = on_log
 
-    client.connect(host, 1883, 40)
+    client.connect(host, 1883, 400)
     t = Thread(target=read2q, args=(client,))
     t.start()
     client.loop_forever()
 
 
 if __name__ == '__main__':
-    host = '10.1.198.163'
+    host = '192.168.1.4'
     print host
     init_client(host)

@@ -1,5 +1,6 @@
 package pku.netlab.hermes.broker;
 
+import io.vertx.core.Handler;
 import org.dna.mqtt.moquette.proto.messages.MessageIDMessage;
 
 import java.util.List;
@@ -22,18 +23,15 @@ public interface IMessageStore {
         return messageStore;
     }
 
-    ;
+    void batchGet(List<String> messageIDs, Handler<List<String>> handler);
 
-    void loadStore();
+    void batchRem(List<String> messageIDs, Handler<Boolean> handler);
 
-    void dropAllMessages(String clientID);
+    void rem(String id, Handler<Boolean> handler);
 
-    List<MessageIDMessage> getAllMessages(String clientID);
+    void get(String id, Handler<String> handler);
 
-    void save(MessageIDMessage message, String clientID);
+    void save(String message, Handler<String> keyHandler);
 
-    //MessageIDMessage deque();
-
-    void removeMessage(int msgID);
-
+    void batchSave(List<String> messages, Handler<List<String>> handler);
 }

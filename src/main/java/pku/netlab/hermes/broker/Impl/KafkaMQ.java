@@ -24,7 +24,7 @@ public class KafkaMQ implements IMessageQueue{
     private Logger logger = LoggerFactory.getLogger(KafkaMQ.class);
 
     public KafkaMQ(Vertx vertx, JsonObject kafkaConfig, Handler<byte[]> handler) {
-        String brokerID = kafkaConfig.getString("brokerID");
+        String brokerID = kafkaConfig.getString("broker_id");
         JsonObject consumerConf = kafkaConfig.getJsonObject("consumer");
 
         consumerConf.put("topic", brokerID);

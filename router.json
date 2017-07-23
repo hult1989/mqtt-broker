@@ -1,4 +1,3 @@
-{
       "group.id": "HermesRouter",
       "auto.offset.reset": "latest",
       "enable.auto.commit": "false",
